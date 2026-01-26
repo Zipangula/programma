@@ -181,20 +181,6 @@
 <!-- SETTINGS -->
 <section id="page-settings" class="page">
   <div class="panel">
-
- <div class="sec">
-  <h3>Account (Email/Password) &amp; Sync</h3>
-  <div class="row two">
-   <input id="email" type="email" placeholder="Email" />
-   <input id="password" type="password" placeholder="Password" />
-  </div>
-  <div class="row three" style="margin-top:6px">
-   <button class="btn" id="loginBtn">Login</button>
-   <button class="secondary" id="registerBtn">Crea account</button>
-   <button class="secondary danger" id="logoutBtn">Logout</button>
-  </div>
-  <div class="muted" id="syncStatus" style="margin-top:6px"></div>
- </div>
     <div class="sec">
       <h3>Profilo</h3>
       <div class="row two">
@@ -420,6 +406,10 @@ const db = getFirestore(app);
 // Offline cache Firestore (migliora esperienza mobile/offline)
 enableIndexedDbPersistence(db).catch(() => {});
 
+// Flag: durante il bootstrap iniziale evitiamo di "sporcare" updatedAt,
+// altrimenti al login il local state risulta "più nuovo" e blocca il restore dal cloud.
+let BOOTING = true;
+
 /* ========= Polyfill ========= */
 if (!('crypto' in window) || !crypto.randomUUID){
   window.crypto = window.crypto || {};
@@ -439,13 +429,13 @@ const KEY = 'diet-planner-v1';
 let state = load() || seed();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)); }catch{ return null; } }
 function save(){
-  state._meta = state._meta || {};
-  state._meta.updatedAt = Date.now();
-  localStorage.setItem(KEY, JSON.stringify(state));
-  scheduleRemoteSave();
-}
-
-
+  // Durante il bootstrap iniziale non aggiorniamo updatedAt e non sincronizziamo.
+  // Questo evita che il local state (appena aperto) risulti 'più nuovo' del cloud.
+  if (BOOTING) {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    return;
+  }
+ 
 // ===== Cloud Sync (per utente) =====
 let remote = {
   uid: null,
@@ -465,7 +455,13 @@ function userDocRef(uid){
 async function pushStateToCloud(){
   if(!remote.uid) return;
   const ref = userDocRef(remote.uid);
-  await setDoc(ref, { state }, { merge: true });
+  try {
+    await setDoc(ref, { state }, { merge: true });
+    setSyncStatus('✅ Salvato sul cloud (' + new Date().toLocaleTimeString() + ')');
+  } catch (e) {
+    console.error('[SYNC] setDoc error:', e);
+    setSyncStatus('❌ Errore sync: ' + (e.code || e.message));
+  }
 }
 
 function scheduleRemoteSave(){
@@ -483,18 +479,28 @@ async function startCloudSync(uid){
 
   // Prima lettura
   const snap = await getDoc(ref);
+  const localTs = state?._meta?.updatedAt || 0;
+
   if(snap.exists()){
     const cloudState = snap.data().state;
     const cloudTs = cloudState?._meta?.updatedAt || 0;
-    const localTs = state?._meta?.updatedAt || 0;
+
     if(cloudTs > localTs){
+      // Cloud più nuovo -> ripristina
       remote.applyingRemote = true;
       state = cloudState;
       localStorage.setItem(KEY, JSON.stringify(state));
       initProfileUI();
       remote.applyingRemote = false;
+      setSyncStatus('✅ Ripristinato dal cloud (' + new Date().toLocaleTimeString() + ')');
+    } else if(localTs > cloudTs){
+      // Locale più nuovo -> push (utile dopo modifiche offline)
+      await pushStateToCloud();
+    } else {
+      setSyncStatus('ℹ️ In sync');
     }
   } else {
+    // Se non esiste -> pubblichiamo lo state locale
     await pushStateToCloud();
   }
 
@@ -502,18 +508,30 @@ async function startCloudSync(uid){
   if(remote.unsub) remote.unsub();
   remote.unsub = onSnapshot(ref, (docSnap) => {
     if(!docSnap.exists()) return;
+
     const cloudState = docSnap.data().state;
     const cloudTs = cloudState?._meta?.updatedAt || 0;
-    const localTs = state?._meta?.updatedAt || 0;
-    if(cloudTs > localTs){
+    const localTs2 = state?._meta?.updatedAt || 0;
+
+    if(cloudTs > localTs2){
       remote.applyingRemote = true;
       state = cloudState;
       localStorage.setItem(KEY, JSON.stringify(state));
       initProfileUI();
       remote.applyingRemote = false;
+      setSyncStatus('✅ Aggiornato dal cloud (' + new Date().toLocaleTimeString() + ')');
     }
+  }, (err) => {
+    console.error('[SYNC] onSnapshot error:', err);
+    setSyncStatus('❌ Listener sync: ' + (err.code || err.message));
   });
 }
+ state._meta = state._meta || {};
+  state._meta.updatedAt = Date.now();
+  localStorage.setItem(KEY, JSON.stringify(state));
+  scheduleRemoteSave();
+}
+
 /* ========= Dataset base (senza alcool/fibra/zuccheri) ========= */
 function F(name,kcal,c,p,fat){
   const id = crypto.randomUUID();
@@ -1285,9 +1303,15 @@ els.logoutBtn?.addEventListener('click', async () => {
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    setSyncStatus('✅ Sync attivo: ' + (user.email || user.uid));
-    startCloudSync(user.uid).catch(console.error);
+    // Fine bootstrap: da qui in avanti aggiorniamo updatedAt e facciamo sync
+    BOOTING = false;
+    setSyncStatus('🔄 Connessione al cloud…');
+    startCloudSync(user.uid).catch((e) => {
+      console.error('[SYNC] startCloudSync error:', e);
+      setSyncStatus('❌ Sync init: ' + (e.code || e.message));
+    });
   } else {
+    BOOTING = false;
     setSyncStatus('ℹ️ Sync disattivo: fai login per salvare sul cloud');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
@@ -1578,6 +1602,8 @@ function initProfileUI(){
 }
 initProfileUI();
 updateFoodPreview();
+BOOTING = false;
+
 </script>
 </body>
 </html>
