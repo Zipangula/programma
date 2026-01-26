@@ -184,18 +184,15 @@
     
     <div class="sec">
       <h3>Account (Email/Password) &amp; Sync</h3>
-
       <div class="row two">
         <input id="email" type="email" placeholder="Email" />
         <input id="password" type="password" placeholder="Password" />
       </div>
-
       <div class="row three" style="margin-top:6px">
         <button class="btn" id="loginBtn">Login</button>
         <button class="secondary" id="registerBtn">Crea account</button>
         <button class="secondary danger" id="logoutBtn">Logout</button>
       </div>
-
       <div class="muted" id="syncStatus" style="margin-top:6px"></div>
     </div>
 <div class="sec">
@@ -509,7 +506,6 @@ async function startCloudSync(uid){
   remote.uid = uid;
   const ref = userDocRef(uid);
 
-  // Prima lettura
   const snap = await getDoc(ref);
   const localTs = state?._meta?.updatedAt || 0;
 
@@ -518,7 +514,6 @@ async function startCloudSync(uid){
     const cloudTs = cloudState?._meta?.updatedAt || 0;
 
     if(cloudTs > localTs){
-      // Cloud più nuovo -> ripristina
       remote.applyingRemote = true;
       state = cloudState;
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -526,25 +521,20 @@ async function startCloudSync(uid){
       remote.applyingRemote = false;
       setSyncStatus('✅ Ripristinato dal cloud (' + new Date().toLocaleTimeString() + ')');
     } else if(localTs > cloudTs){
-      // Locale più nuovo -> push (utile dopo modifiche offline)
       await pushStateToCloud();
     } else {
       setSyncStatus('ℹ️ In sync');
     }
   } else {
-    // Se non esiste -> pubblichiamo lo state locale
     await pushStateToCloud();
   }
 
-  // Listener realtime
   if(remote.unsub) remote.unsub();
   remote.unsub = onSnapshot(ref, (docSnap) => {
     if(!docSnap.exists()) return;
-
     const cloudState = docSnap.data().state;
     const cloudTs = cloudState?._meta?.updatedAt || 0;
     const localTs2 = state?._meta?.updatedAt || 0;
-
     if(cloudTs > localTs2){
       remote.applyingRemote = true;
       state = cloudState;
@@ -1382,6 +1372,12 @@ els.foodsFile.addEventListener('change', e=>{
                 fat=parse(r[idx('grassi')]||0);
           return {name,kcal,c,p,fat};
         });
+        importFoodsArray(arr);
+      }
+    }catch(err){ alert('Import alimenti fallito: '+err.message); }
+  };
+  r.readAsText(f,'utf-8'); e.target.value='';
+});
 
 els.importFoodsPasteBtn?.addEventListener('click', () => {
   try {
@@ -1396,12 +1392,6 @@ els.importFoodsPasteBtn?.addEventListener('click', () => {
   }
 });
 
-        importFoodsArray(arr);
-      }
-    }catch(err){ alert('Import alimenti fallito: '+err.message); }
-  };
-  r.readAsText(f,'utf-8'); e.target.value='';
-});
 
 /* ========= Settings / Profili ========= */
 function setProfileHandlers(){
