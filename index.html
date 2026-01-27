@@ -102,7 +102,14 @@
   .err{color:#ef4444;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3)}
   .input-err{border-color:#ef4444!important; box-shadow:0 0 0 3px rgba(239,68,68,.18)!important}
 
-  /* Arrotondamento info */
+  
+/* Sync badges */
+.badge.ok{color:#10b981;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.35)}
+.badge.err{color:#ef4444;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}
+.badge.warn{color:#f59e0b;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35)}
+.badge.neu{color:#94a3b8;background:rgba(148,163,184,.10);border-color:rgba(255,255,255,.12)}
+
+/* Arrotondamento info */
   .approx-badge{font-size:10px;border:1px dashed rgba(255,255,255,.25);padding:2px 6px;border-radius:999px}
   .approx-up{color:#fde68a;background:rgba(253,230,138,.12)}
   .approx-down{color:#93c5fd;background:rgba(147,197,253,.12)}
@@ -447,46 +454,65 @@ const KCAL_C=4, KCAL_P=4, KCAL_F=9;
 const KEY = 'diet-planner-v1';
 let state = load() || seed();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)); }catch{ return null; } }
+
 function save(){
   if (BOOTING) {
     localStorage.setItem(KEY, JSON.stringify(state));
     return;
   }
- 
+  state._meta = state._meta || {};
+  state._meta.updatedAt = Date.now();
+  localStorage.setItem(KEY, JSON.stringify(state));
+  scheduleRemoteSave();
+}
+
 // ===== Cloud Sync (per utente) =====
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
 let lastSyncAt = 0;
 
+function updateBadges({auth='neu', authText='Non loggato', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
+  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText; }
+  if (els.netBadge){ els.netBadge.className = 'badge ' + net; els.netBadge.textContent = netText; }
+  if (els.syncBadge){ els.syncBadge.className = 'badge ' + sync; els.syncBadge.textContent = syncText; }
+  if (els.syncDetails){ els.syncDetails.textContent = details || ''; }
+}
+
 function setNetStatus(){
-  if(!els.netStatus) return;
-  els.netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
+  const on = navigator.onLine;
+  if (els.netStatus) els.netStatus.textContent = on ? 'Online' : 'Offline';
+  updateBadges({
+    net: on ? 'ok' : 'warn',
+    netText: 'Rete: ' + (on ? 'Online' : 'Offline')
+  });
 }
 window.addEventListener('online', setNetStatus);
 window.addEventListener('offline', setNetStatus);
 
-function renderSyncStatus(extraMsg=''){
-  if(!els.syncStatus) return;
-  const user = auth.currentUser;
-  const who = user ? (user.email || user.uid) : 'Non loggato';
-  const net = navigator.onLine ? 'Online' : 'Offline';
-  const last = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : '—';
-  const head = user ? '✅ Loggato' : 'ℹ️ Non loggato';
-  const extra = extraMsg ? (' · ' + extraMsg) : '';
-  els.syncStatus.textContent = `${head}: ${who} · Rete: ${net} · Ultima sync: ${last}${extra}`;
-}
-
 function userDocRef(uid){ return doc(db, 'users', uid, 'apps', 'dietPlanner'); }
+
+function setSyncState(type, msg){
+  const t = type || 'neu';
+  const text = msg || '—';
+  const last = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : '—';
+  updateBadges({
+    sync: t,
+    syncText: 'Sync: ' + text,
+    details: lastSyncAt ? ('Ultima sync: ' + last) : ''
+  });
+}
 
 async function pushStateToCloud(){
   if(!remote.uid) return;
   const ref = userDocRef(remote.uid);
   try {
+    setSyncState('warn','Salvataggio…');
     await setDoc(ref, { state }, { merge: true });
     lastSyncAt = Date.now();
-    renderSyncStatus('Salvato sul cloud');
+    setSyncState('ok','Salvato');
   } catch (e) {
     console.error('[SYNC] setDoc error:', e);
-    renderSyncStatus('Errore sync: ' + (e.code || e.message));
+    setSyncState('err', 'Errore');
+    if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
   }
 }
 
@@ -501,6 +527,7 @@ async function startCloudSync(uid){
   remote.uid = uid;
   const ref = userDocRef(uid);
 
+  // Prima lettura
   const snap = await getDoc(ref);
   const localTs = state?._meta?.updatedAt || 0;
 
@@ -515,22 +542,24 @@ async function startCloudSync(uid){
       initProfileUI();
       remote.applyingRemote = false;
       lastSyncAt = Date.now();
-      renderSyncStatus('Ripristinato dal cloud');
+      setSyncState('ok','Ripristinato');
     } else if(localTs > cloudTs){
       await pushStateToCloud();
     } else {
-      renderSyncStatus('In sync');
+      setSyncState('ok','In sync');
     }
   } else {
     await pushStateToCloud();
   }
 
+  // Listener realtime
   if(remote.unsub) remote.unsub();
   remote.unsub = onSnapshot(ref, (docSnap) => {
     if(!docSnap.exists()) return;
     const cloudState = docSnap.data().state;
     const cloudTs = cloudState?._meta?.updatedAt || 0;
     const localTs2 = state?._meta?.updatedAt || 0;
+
     if(cloudTs > localTs2){
       remote.applyingRemote = true;
       state = cloudState;
@@ -538,20 +567,17 @@ async function startCloudSync(uid){
       initProfileUI();
       remote.applyingRemote = false;
       lastSyncAt = Date.now();
-      renderSyncStatus('Aggiornato dal cloud');
+      setSyncState('ok','Aggiornato');
     }
   }, (err) => {
     console.error('[SYNC] onSnapshot error:', err);
-    renderSyncStatus('Listener error: ' + (err.code || err.message));
+    setSyncState('err','Listener');
+    if (els.syncDetails) els.syncDetails.textContent = (err.code || err.message);
   });
-}
- state._meta = state._meta || {};
-  state._meta.updatedAt = Date.now();
-  localStorage.setItem(KEY, JSON.stringify(state));
-  scheduleRemoteSave();
 }
 
 /* ========= Dataset base (senza alcool/fibra/zuccheri) ========= */
+
 function F(name,kcal,c,p,fat){
   const id = crypto.randomUUID();
   return {id,name,kcal,c,p,fat,group:dominant(c,p,fat)};
@@ -656,6 +682,13 @@ const els = {
  resetPwdBtn: $('#resetPwdBtn'),
  syncStatus: $('#syncStatus'),
  netStatus: $('#netStatus'),
+
+ // Auth/Sync badges
+ forceSyncBtn: $('#forceSyncBtn'),
+ authBadge: $('#authBadge'),
+ netBadge: $('#netBadge'),
+ syncBadge: $('#syncBadge'),
+ syncDetails: $('#syncDetails'),
 };
 
 /* ========= Tabs ========= */
@@ -1301,7 +1334,7 @@ els.mealsContainer.addEventListener('click', e=>{
 
 /* ========= Eventi generali ========= */
 
-// ===== Auth UI handlers (Login / Registrazione / Logout / Reset password) =====
+// ===== Auth UI handlers =====
 els.resetPwdBtn?.addEventListener('click', async () => {
   const email = els.email?.value?.trim();
   if(!email){ alert('Inserisci prima la tua email.'); return; }
@@ -1313,35 +1346,63 @@ els.resetPwdBtn?.addEventListener('click', async () => {
   }
 });
 
+els.forceSyncBtn?.addEventListener('click', async () => {
+  if(!remote.uid){ alert('Fai login prima per sincronizzare.'); return; }
+  await pushStateToCloud();
+});
+
 els.loginBtn?.addEventListener('click', async () => {
-  try { await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value); }
-  catch (e) { alert('Login fallito: ' + e.message); }
+  try {
+    await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+  } catch (e) {
+    alert('Login fallito: ' + (e.message || e.code));
+    setSyncState('err','Login');
+  }
 });
 
 els.registerBtn?.addEventListener('click', async () => {
-  try { await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value); }
-  catch (e) { alert('Registrazione fallita: ' + e.message); }
+  try {
+    await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+  } catch (e) {
+    alert('Registrazione fallita: ' + (e.message || e.code));
+    setSyncState('err','Signup');
+  }
 });
 
-els.logoutBtn?.addEventListener('click', async () => { await signOut(auth); });
+els.logoutBtn?.addEventListener('click', async () => {
+  await signOut(auth);
+});
 
 onAuthStateChanged(auth, (user) => {
   BOOTING = false;
   setNetStatus();
   if (user) {
-    renderSyncStatus('Connessione al cloud…');
+    updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
+    setSyncState('warn','Connessione…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
-      renderSyncStatus('Sync init: ' + (e.code || e.message));
+      setSyncState('err','Init');
+      if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
     });
   } else {
-    renderSyncStatus('Fai login per salvare sul cloud');
-    if (remote?.unsub) remote.unsub();
-    if (remote) remote.uid = null;
+    updateBadges({auth:'neu', authText:'Non loggato'});
+    setSyncState('neu','—');
+    if (remote.unsub) remote.unsub();
+    remote.uid = null;
   }
 });
 
+// Re-attach the rest of general events
 els.addFoodBtn.addEventListener('click', addFoodFromForm);
+els.foodSearch.addEventListener('input', renderFoods);
+els.exportFoodsBtn.addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state.foods, null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='alimenti.json'; a.click(); URL.revokeObjectURL(a.href);
+});
+els.importFoodsBtn.addEventListener('click', () => els.foodsFile.click());
+
+
 els.foodSearch.addEventListener('input', renderFoods);
 els.exportFoodsBtn.addEventListener('click', ()=>{
   const blob = new Blob([JSON.stringify(state.foods, null, 2)], {type:'application/json'});
