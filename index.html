@@ -1006,8 +1006,6 @@ function macroBox(k,label,idx,m){
         </div>
       </div>
       <div class="inline">
-        <span class="muted">%</span>
-        <input type="number" min="0" max="100" step="5" style="width:64px" value="${it.autoPct ?? 100}" data-role="itemPct" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" title="Percentuale del target macro che questo alimento deve coprire"/>
         <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
         <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
       </div>
@@ -1092,7 +1090,7 @@ function renderPlanner(){
   const p = currentProfile();
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
-    ensureItemDefaults(m);
+  ensureItemDefaults(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1110,8 +1108,8 @@ function renderPlanner(){
           <div class="inline">${variantsSelect}</div>
         </div>
         <span class="badge">${fmt(kcalTotal)} kcal - C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>
-      <span class="badge neu" id="mealActual-${idx}"></span>
-      <span class="badge neu" id="mealResid-${idx}"></span>
+ <span class="badge neu" id="mealActual-${idx}"></span>
+ <span class="badge neu" id="mealResid-${idx}"></span>
       </div>
       <div class="macro-box">
         ${macroBox('c','Carboidrati',idx,m)}
@@ -1425,10 +1423,9 @@ els.mealsContainer.addEventListener('change', e=>{
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
   else if (t.dataset.role==='itemPct') {
  const mealIdx = parseInt(t.dataset.meal);
- const p = currentProfile(), m = p.meals[mealIdx];
+ const p = currentProfile(), m=p.meals[mealIdx];
  ensureItemDefaults(m);
- const k = t.dataset.k;
- const it = m.items[k].find(x=>x.foodId===t.dataset.food);
+ const it = m.items[t.dataset.k].find(x=>x.foodId===t.dataset.food);
  if (!it) return;
  const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
  it.autoPct = v;
@@ -1461,24 +1458,19 @@ els.mealsContainer.addEventListener('change', e=>{
   }
 });
 
-// Realtime update: input su grammi e percentuale
+// Realtime update: input su grammi e percentuale (senza snap durante la digitazione)
 els.mealsContainer.addEventListener('input', e=>{
   const t=e.target;
   if (t.dataset.role==='grams') {
     const mealIdx = parseInt(t.dataset.meal);
     const p = currentProfile(), m=p.meals[mealIdx];
-    const arr = m.items[t.dataset.k];
-    const it = arr.find(x=>x.foodId===t.dataset.food);
+    const it = m.items[t.dataset.k].find(x=>x.foodId===t.dataset.food);
     if (!it) return;
-    let v = parse(t.value);
-    if (state.ui?.snapManual5) {
-      const {g,dir} = roundTo5WithDir(v);
-      v = g; it.approxDir = dir; t.value = g;
-    } else {
-      it.approxDir = null;
-    }
+    // Durante la digitazione NON arrotondiamo: lasciamo inserire qualsiasi numero
+    const v = parse(t.value);
     it.g = v;
-    it.auto=false;
+    it.auto = false;
+    it.approxDir = null;
     syncActiveVariant(mealIdx);
     save();
     updateMealBadges(mealIdx, m);
