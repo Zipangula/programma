@@ -379,7 +379,6 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
 import {
@@ -407,7 +406,8 @@ const db = getFirestore(app);
 // Offline cache Firestore (migliora esperienza mobile/offline)
 enableIndexedDbPersistence(db).catch(() => {});
 
-// Flag: durante il bootstrap iniziale evitiamo di "sporcare" updatedAt
+// Flag: durante il bootstrap iniziale evitiamo di "sporcare" updatedAt,
+// altrimenti al login il local state risulta "più nuovo" e blocca il restore dal cloud.
 let BOOTING = true;
 
 /* ========= Polyfill ========= */
@@ -429,23 +429,28 @@ const KEY = 'diet-planner-v1';
 let state = load() || seed();
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)); }catch{ return null; } }
 function save(){
+  // Durante il bootstrap iniziale non aggiorniamo updatedAt e non sincronizziamo.
+  // Questo evita che il local state (appena aperto) risulti 'più nuovo' del cloud.
   if (BOOTING) {
     localStorage.setItem(KEY, JSON.stringify(state));
     return;
   }
  
 // ===== Cloud Sync (per utente) =====
-let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
+let remote = {
+  uid: null,
+  unsub: null,
+  applyingRemote: false,
+  saveTimer: null,
+};
 
-function setSyncStatus(msg){ if (els.syncStatus) els.syncStatus.textContent = msg; }
-function setNetStatus(){
-  if(!els.netStatus) return;
-  els.netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
+function setSyncStatus(msg){
+  if (els.syncStatus) els.syncStatus.textContent = msg;
 }
-window.addEventListener('online', setNetStatus);
-window.addEventListener('offline', setNetStatus);
 
-function userDocRef(uid){ return doc(db, 'users', uid, 'apps', 'dietPlanner'); }
+function userDocRef(uid){
+  return doc(db, 'users', uid, 'apps', 'dietPlanner');
+}
 
 async function pushStateToCloud(){
   if(!remote.uid) return;
@@ -463,13 +468,16 @@ function scheduleRemoteSave(){
   if(!remote.uid) return;
   if(remote.applyingRemote) return;
   clearTimeout(remote.saveTimer);
-  remote.saveTimer = setTimeout(() => { pushStateToCloud().catch(console.error); }, 600);
+  remote.saveTimer = setTimeout(() => {
+    pushStateToCloud().catch(console.error);
+  }, 600);
 }
 
 async function startCloudSync(uid){
   remote.uid = uid;
   const ref = userDocRef(uid);
 
+  // Prima lettura
   const snap = await getDoc(ref);
   const localTs = state?._meta?.updatedAt || 0;
 
@@ -478,6 +486,7 @@ async function startCloudSync(uid){
     const cloudTs = cloudState?._meta?.updatedAt || 0;
 
     if(cloudTs > localTs){
+      // Cloud più nuovo -> ripristina
       remote.applyingRemote = true;
       state = cloudState;
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -485,20 +494,25 @@ async function startCloudSync(uid){
       remote.applyingRemote = false;
       setSyncStatus('✅ Ripristinato dal cloud (' + new Date().toLocaleTimeString() + ')');
     } else if(localTs > cloudTs){
+      // Locale più nuovo -> push (utile dopo modifiche offline)
       await pushStateToCloud();
     } else {
       setSyncStatus('ℹ️ In sync');
     }
   } else {
+    // Se non esiste -> pubblichiamo lo state locale
     await pushStateToCloud();
   }
 
+  // Listener realtime
   if(remote.unsub) remote.unsub();
   remote.unsub = onSnapshot(ref, (docSnap) => {
     if(!docSnap.exists()) return;
+
     const cloudState = docSnap.data().state;
     const cloudTs = cloudState?._meta?.updatedAt || 0;
     const localTs2 = state?._meta?.updatedAt || 0;
+
     if(cloudTs > localTs2){
       remote.applyingRemote = true;
       state = cloudState;
@@ -620,9 +634,7 @@ const els = {
  loginBtn: $('#loginBtn'),
  registerBtn: $('#registerBtn'),
  logoutBtn: $('#logoutBtn'),
- resetPwdBtn: $('#resetPwdBtn'),
  syncStatus: $('#syncStatus'),
- netStatus: $('#netStatus'),
 };
 
 /* ========= Tabs ========= */
@@ -1267,6 +1279,45 @@ els.mealsContainer.addEventListener('click', e=>{
 });
 
 /* ========= Eventi generali ========= */
+
+// ===== Auth UI handlers =====
+els.loginBtn?.addEventListener('click', async () => {
+  try {
+    await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+  } catch (e) {
+    alert('Login fallito: ' + e.message);
+  }
+});
+
+els.registerBtn?.addEventListener('click', async () => {
+  try {
+    await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+  } catch (e) {
+    alert('Registrazione fallita: ' + e.message);
+  }
+});
+
+els.logoutBtn?.addEventListener('click', async () => {
+  await signOut(auth);
+});
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    // Fine bootstrap: da qui in avanti aggiorniamo updatedAt e facciamo sync
+    BOOTING = false;
+    setSyncStatus('🔄 Connessione al cloud…');
+    startCloudSync(user.uid).catch((e) => {
+      console.error('[SYNC] startCloudSync error:', e);
+      setSyncStatus('❌ Sync init: ' + (e.code || e.message));
+    });
+  } else {
+    BOOTING = false;
+    setSyncStatus('ℹ️ Sync disattivo: fai login per salvare sul cloud');
+    if (remote.unsub) remote.unsub();
+    remote.uid = null;
+  }
+});
+
 els.addFoodBtn.addEventListener('click', addFoodFromForm);
 els.foodSearch.addEventListener('input', renderFoods);
 els.exportFoodsBtn.addEventListener('click', ()=>{
