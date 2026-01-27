@@ -157,7 +157,7 @@
    <p>Schede: Planner - Impostazioni - Alimenti - Anteprima</p>
   </div>
   <div class="header-status">
-   <span id="authBadge" class="badge neu"></span>
+   <span id="authBadge" class="badge neu">Non loggato</span>
    <span id="netBadge" class="badge neu">Rete: —</span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
   </div>
@@ -213,15 +213,15 @@
    <button class="secondary" id="registerBtn">Crea account</button>
    <button class="secondary danger" id="logoutBtn">Logout</button>
   </div>
-  <div class="row two" style="margin-top:6px"> 
- <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
- <div class="inline right" style="justify-content:flex-end">
-  <span class="muted" id="netStatus"></span>
-  <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
- </div>
-</div>
-  <div id="syncDetails" class="muted" style="margin-top:6px"></div>
-<div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
+   <div class="row two" style="margin-top:6px"> 
+  <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
+  <div class="inline right" style="justify-content:flex-end">
+   <span class="muted" id="netStatus"></span>
+   <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione con il cloud">Forza sync</button>
+  </div>
+ </div> 
+ <div id="syncDetails" class="muted" style="margin-top:6px"></div>
+ <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
     <div class="sec">
@@ -487,10 +487,8 @@ function save(){
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
 let lastSyncAt = 0;
 
-function updateBadges({auth='neu', authText='', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
-  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText || '';
-  /* auth badge visibility */
-  els.authBadge.classList.toggle('hidden', !authText); }
+function updateBadges({auth='neu', authText='Non loggato', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
+  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText; }
   if (els.netBadge){ els.netBadge.className = 'badge ' + net; els.netBadge.textContent = netText; }
   if (els.syncBadge){ els.syncBadge.className = 'badge ' + sync; els.syncBadge.textContent = syncText; }
   if (els.syncDetails){ els.syncDetails.textContent = details || ''; }
@@ -503,16 +501,7 @@ function setNetStatus(){
     net: on ? 'ok' : 'warn',
     netText: 'Rete: ' + (on ? 'Online' : 'Offline')
   });
- updateForceSyncBtn();
 }
-
-function updateForceSyncBtn() {
- if (!els.forceSyncBtn) return;
- const can = !!remote.uid && navigator.onLine;
- els.forceSyncBtn.disabled = !can;
- els.forceSyncBtn.title = can ? 'Forza sincronizzazione (upload/download)' : (!navigator.onLine ? 'Offline: impossibile sincronizzare' : 'Fai login per sincronizzare');
-}
-
 window.addEventListener('online', setNetStatus);
 window.addEventListener('offline', setNetStatus);
 
@@ -544,43 +533,6 @@ async function pushStateToCloud(){
   }
 }
 
-
-async function forceResync() {
- if (!remote.uid) return;
- const ref = userDocRef(remote.uid);
- try {
-  setSyncState('warn','Risincronizzo…');
-  const snap = await getDoc(ref);
-  const localTs = state?._meta?.updatedAt || 0;
-  if (!snap.exists()) {
-   // Nulla sul cloud: carico lo stato locale
-   await pushStateToCloud();
-   return;
-  }
-  const cloudState = snap.data().state;
-  const cloudTs = cloudState?._meta?.updatedAt || 0;
-  if (cloudTs > localTs) {
-   // Cloud più recente: scarico
-   remote.applyingRemote = true;
-   state = cloudState;
-   localStorage.setItem(KEY, JSON.stringify(state));
-   initProfileUI();
-   remote.applyingRemote = false;
-   lastSyncAt = Date.now();
-   setSyncState('ok','Scaricato');
-  } else if (localTs > cloudTs) {
-   // Locale più recente: carico
-   await pushStateToCloud();
-  } else {
-   lastSyncAt = Date.now();
-   setSyncState('ok','In sync');
-  }
- } catch (e) {
-  console.error('[SYNC] forceResync error:', e);
-  setSyncState('err','Errore');
-  if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
- }
-}
 function scheduleRemoteSave(){
   if(!remote.uid) return;
   if(remote.applyingRemote) return;
@@ -1001,11 +953,7 @@ function macroBox(k,label,idx,m){
         </div>
       </div>
       <div class="inline">
-        <div class=\"inline\" style=\"gap:6px\">
-          <span class=\"muted\">%</span>
-          <input type=\"number\" min=\"0\" max=\"100\" step=\"5\" style=\"width:64px\" value=\"${it.autoPct ?? 100}\" data-role=\"itemPct\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\" title=\"Percentuale del target macro che questo alimento deve coprire\"/>
-        </div>
-        <button class=\"secondary\" data-role=\"auto1\" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
+        <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
         <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
       </div>
     </div>
@@ -1030,7 +978,6 @@ function renderPlanner(){
   const p = currentProfile();
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
-    ensureItemDefaults(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1324,7 +1271,7 @@ function addItem(mealIdx,k,foodId){
   const p = currentProfile(), m=p.meals[mealIdx];
   if (!foodId) return;
   if (m.items[k].some(it=>it.foodId===foodId)) return;
-  m.items[k].push({foodId, g:0, auto:false, approxDir:null, autoPct:100});
+  m.items[k].push({foodId, g:0, auto:false, approxDir:null});
   syncActiveVariant(mealIdx);
   save(); renderPlanner();
 }
@@ -1357,18 +1304,7 @@ function autoFillOne(mealIdx,k){
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
-  else if (t.dataset.role==='itemPct') {
-      const mealIdx = parseInt(t.dataset.meal);
-      const p = currentProfile(), m = p.meals[mealIdx];
-      const k = t.dataset.k;
-      const it = m.items[k].find(x=>x.foodId===t.dataset.food);
-      if (!it) return;
-      const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
-      it.autoPct = v;
-      t.value = v;
-      save();
-    }
-    else if (t.dataset.role==='grams'){
+  else if (t.dataset.role==='grams'){
     const mealIdx = parseInt(t.dataset.meal);
     const p = currentProfile(), m=p.meals[mealIdx];
     const arr = m.items[t.dataset.k]; const it = arr.find(x=>x.foodId===t.dataset.food);
@@ -1428,9 +1364,8 @@ els.resetPwdBtn?.addEventListener('click', async () => {
 });
 
 els.forceSyncBtn?.addEventListener('click', async () => {
- if (!remote.uid) { alert('Fai login prima per sincronizzare.'); return; }
- if (!navigator.onLine) { alert('Sei offline: riconnettiti per sincronizzare.'); return; }
- await forceResync();
+  if(!remote.uid){ alert('Fai login prima per sincronizzare.'); return; }
+  await pushStateToCloud();
 });
 
 els.loginBtn?.addEventListener('click', async () => {
@@ -1458,7 +1393,6 @@ els.logoutBtn?.addEventListener('click', async () => {
 onAuthStateChanged(auth, (user) => {
   BOOTING = false;
   setNetStatus();
- updateForceSyncBtn();
   if (user) {
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
     setSyncState('warn','Connessione…');
@@ -1468,7 +1402,7 @@ onAuthStateChanged(auth, (user) => {
       if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
     });
   } else {
-    updateBadges({auth:'neu', authText:''});
+    updateBadges({auth:'neu', authText:'Non loggato'});
     setSyncState('neu','—');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
