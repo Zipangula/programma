@@ -158,7 +158,6 @@
   </div>
   <div class="header-status">
    <span id="authBadge" class="badge neu">Non loggato</span>
-   <span id="netBadge" class="badge neu">Rete: —</span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
   </div>
  </div>
@@ -216,11 +215,11 @@
   <div class="row two" style="margin-top:6px"> 
  <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
  <div class="inline right" style="justify-content:flex-end">
-  <span class="muted" id="netStatus"></span>
   <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
  </div>
 </div>
-  <div id="syncDetails" class="muted" style="margin-top:6px"></div>
+  <div id="authDebug" class="muted" style="margin-top:6px"></div>
+<div id="syncDetails" class="muted" style="margin-top:6px"></div>
 <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
@@ -494,6 +493,10 @@ function updateBadges({auth='neu', authText='Non loggato', net='neu', netText='R
   if (els.syncDetails){ els.syncDetails.textContent = details || ''; }
 }
 
+function setAuthDebug(msg){
+  if (els.authDebug) els.authDebug.textContent = msg || '';
+}
+
 function setNetStatus(){
   const on = navigator.onLine;
   if (els.netStatus) els.netStatus.textContent = on ? 'Online' : 'Offline';
@@ -752,6 +755,7 @@ const els = {
  netBadge: $('#netBadge'),
  syncBadge: $('#syncBadge'),
  syncDetails: $('#syncDetails'),
+  authDebug: $('#authDebug'),
 };
 
 /* ========= Tabs ========= */
@@ -914,27 +918,28 @@ function roundTo5WithDir(gramsExact){
 }
 
 /* ========= Planner: pasti + varianti ========= */
-function ensureMeals(p, nOverride){
- const n = parseInt((nOverride ?? p.mealsCount ?? els.mealsCount.value) || 0);
- p.mealsCount = n;
- while (p.meals.length < n){
-  p.meals.push({
-   name:`Pasto ${p.meals.length+1}`,
-   macros:{c:0,p:0,f:0,kcal:0},
-   items:{c:[],p:[],f:[]},
-   variants:[], activeVarId:null
-  });
- }
- while (p.meals.length > n){ p.meals.pop(); }
- p.meals.forEach(m=>{
-  if (!m.variants || !m.variants.length){
-   const vid = crypto.randomUUID();
-   m.variants = [{id:vid, name:'Tipo 1', items:cloneItems(m.items)}];
-   m.activeVarId = vid;
-  } else if (!m.activeVarId){
-   m.activeVarId = m.variants[0].id;
+function ensureMeals(p){
+  const n = parseInt(els.mealsCount.value||p.mealsCount);
+  p.mealsCount = n;
+  while (p.meals.length < n){
+    p.meals.push({
+      name:`Pasto ${p.meals.length+1}`,
+      macros:{c:0,p:0,f:0,kcal:0},
+      items:{c:[],p:[],f:[]},
+      variants:[], activeVarId:null
+    });
   }
- });
+  while (p.meals.length > n){ p.meals.pop(); }
+  p.meals.forEach(m=>{
+      if (!m.autoPct) m.autoPct = {c:100,p:100,f:100};
+    if (!m.variants || !m.variants.length){
+      const vid = crypto.randomUUID();
+      m.variants = [{id:vid, name:'Tipo 1', items:cloneItems(m.items)}];
+      m.activeVarId = vid;
+    }else if (!m.activeVarId){
+      m.activeVarId = m.variants[0].id;
+    }
+  });
 }
 function cloneItems(items){ return { c:items.c.map(i=>({...i})), p:items.p.map(i=>({...i})), f:items.f.map(i=>({...i})) }; }
 function getActiveVariant(m){ return m.variants.find(v=>v.id===m.activeVarId) || m.variants[0]; }
@@ -1013,6 +1018,11 @@ function macroBox(k,label,idx,m){
       <select data-role="addFood" data-meal="${idx}" data-k="${k}">
         <option value="">+ Aggiungi alimento...</option>${opts}
       </select>
+      <div class="inline" style="gap:6px">
+        <span class="muted">Auto%</span>
+        <input type="number" min="0" max="100" step="5" style="width:70px" value="${(m.autoPct?.[k] ?? 100)}" data-role="autoPct" data-meal="${idx}" data-k="${k}" />
+        <span class="unit">%</span>
+      </div>
       <button class="secondary" data-role="autoFill" data-meal="${idx}" data-k="${k}">Auto (1 alimento)</button>
     </div>
     <div style="margin-top:6px">${items || '<div class="muted">Nessun alimento</div>'}</div>
@@ -1350,7 +1360,17 @@ function autoFillOne(mealIdx,k){
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
-  else if (t.dataset.role==='grams'){
+  else if (t.dataset.role==='autoPct') {
+      const mealIdx = parseInt(t.dataset.meal);
+      const k = t.dataset.k;
+      const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+      const p = currentProfile(), m = p.meals[mealIdx];
+      if (!m.autoPct) m.autoPct = {c:100,p:100,f:100};
+      m.autoPct[k] = v;
+      t.value = v;
+      save();
+    }
+    else if (t.dataset.role==='grams'){
     const mealIdx = parseInt(t.dataset.meal);
     const p = currentProfile(), m=p.meals[mealIdx];
     const arr = m.items[t.dataset.k]; const it = arr.find(x=>x.foodId===t.dataset.food);
@@ -1416,12 +1436,31 @@ els.forceSyncBtn?.addEventListener('click', async () => {
 });
 
 els.loginBtn?.addEventListener('click', async () => {
+  const email = els.email?.value?.trim();
+  const pwd = els.password?.value;
+  if (!email || !pwd) { setAuthDebug('Inserisci email e password.'); return; }
+  if (location.protocol === 'file:') {
+    setAuthDebug('Stai aprendo il file in locale (file://). Pubblica su hosting (https) per usare Firebase Auth.');
+  }
+  els.loginBtn.disabled = true;
+  setAuthDebug('Login in corso…');
   try {
-    await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
-  updateBadges({auth:'warn', authText:'Accesso…'});
+    await signInWithEmailAndPassword(auth, email, pwd);
+    const u = auth.currentUser;
+    if (u) {
+      updateBadges({auth:'ok', authText:'Loggato: ' + (u.email || u.uid)});
+      setAuthDebug('Login OK.');
+    } else {
+      updateBadges({auth:'warn', authText:'Accesso…'});
+      setAuthDebug('Login completato, in attesa conferma sessione…');
+    }
   } catch (e) {
+    console.error('[AUTH] login error', e);
+    setAuthDebug('Login fallito: ' + (e.code || '') + ' ' + (e.message || ''));
     alert('Login fallito: ' + (e.message || e.code));
     setSyncState('err','Login');
+  } finally {
+    els.loginBtn.disabled = false;
   }
 });
 
@@ -1439,11 +1478,13 @@ els.logoutBtn?.addEventListener('click', async () => {
 });
 
 onAuthStateChanged(auth, (user) => {
+  console.log('[AUTH] state', user ? ('IN ' + (user.email||user.uid)) : 'OUT');
   BOOTING = false;
   setNetStatus();
+ updateForceSyncBtn();
   if (user) {
-  remote.uid = user.uid;
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
+    setAuthDebug('Sessione attiva: ' + (user.email || user.uid));
     setSyncState('warn','Connessione…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
@@ -1452,9 +1493,11 @@ onAuthStateChanged(auth, (user) => {
     });
   } else {
     updateBadges({auth:'neu', authText:'Non loggato'});
+    setAuthDebug('Sessione non attiva.');
     setSyncState('neu','—');
+    if (remote.unsub) remote.unsub();
+    remote.uid = null;
   }
-  updateForceSyncBtn();
 });
 
 // Re-attach the rest of general events
@@ -1575,7 +1618,7 @@ function setProfileHandlers(){
   });
 
   // Pasti & split
-  els.mealsCount.addEventListener('change', ()=>{ ensureMeals(currentProfile(), Number(els.mealsCount.value)); buildPercentages(); renderPercentages(); renderPlanner(); save(); });
+  els.mealsCount.addEventListener('change', ()=>{ ensureMeals(currentProfile()); buildPercentages(); renderPercentages(); renderPlanner(); save(); });
   els.splitMode.addEventListener('change', ()=>{ currentProfile().splitMode = els.splitMode.value; buildPercentages(); renderPercentages(); save(); });
   els.applySplitBtn.addEventListener('click', ()=>{ applyDistribution(); });
 
@@ -1733,13 +1776,16 @@ function initProfileUI(){
 
   els.phase.value = p.phase; els.weight.value=p.weight; els.kcalTarget.value=p.kcalTarget;
   els.macroMode.value=p.macroMode;
- els.mealsCount.value = p.mealsCount;
- els.splitMode.value = p.splitMode || 'percent';
- ensureMeals(p, p.mealsCount);
- if (p.macroMode==='auto') applyAutoMacros(); else setInputsFromMacros();
- showMacroHint();
- renderFactors();
- buildPercentages();
+
+  ensureMeals(p);
+  if (p.macroMode==='auto') applyAutoMacros(); else setInputsFromMacros();
+  showMacroHint();
+
+  renderFactors();
+
+  els.mealsCount.value = p.mealsCount;
+  els.splitMode.value = p.splitMode;
+  buildPercentages();
   renderPercentages();
 
   renderPlanner();
