@@ -1051,7 +1051,13 @@ function calcMealActual(m){
 }
 function calcMealResidual(m){
   const a = calcMealActual(m);
-  return { c: (m.macros.c - a.c), p: (m.macros.p - a.p), f: (m.macros.f - a.f) };
+  const kcalTarget = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
+  return { c: (m.macros.c - a.c), p: (m.macros.p - a.p), f: (m.macros.f - a.f), kcal: (kcalTarget - a.kcal) };
+}
+function fmtSigned0(x){
+  const v = Math.round(x);
+  const s = v>0 ? '+' : '';
+  return s + fmt0(v);
 }
 function fmtSigned(x){
   const v = Math.round(x*10)/10;
@@ -1070,13 +1076,14 @@ function updateMealBadges(mealIdx, m){
   }
 
   if (rEl) {
-    // Soglia: ±2 g (ok se tutti i residui sono dentro la soglia)
-    const TH = 2;
-    const over = (r.c < -TH) || (r.p < -TH) || (r.f < -TH);      // sforamento (negativo)
-    const far  = (Math.abs(r.c) > TH) || (Math.abs(r.p) > TH) || (Math.abs(r.f) > TH);
+    // Soglie: ±2 g sui macro, ±20 kcal sulle calorie
+    const THG = 2;
+    const THK = 20;
+    const over = (r.c < -THG) || (r.p < -THG) || (r.f < -THG) || (r.kcal < -THK);
+    const far  = (Math.abs(r.c) > THG) || (Math.abs(r.p) > THG) || (Math.abs(r.f) > THG) || (Math.abs(r.kcal) > THK);
     const status = over ? 'err' : (far ? 'warn' : 'ok');
     rEl.className = 'badge ' + status;
-    rEl.textContent = `Residuo: C ${fmtSigned(r.c)} g - P ${fmtSigned(r.p)} g - G ${fmtSigned(r.f)} g`;
+    rEl.textContent = `Residuo: ${fmtSigned0(r.kcal)} kcal - C ${fmtSigned(r.c)} g - P ${fmtSigned(r.p)} g - G ${fmtSigned(r.f)} g`;
   }
 }
 
@@ -1417,19 +1424,19 @@ els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
   else if (t.dataset.role==='itemPct') {
-    const mealIdx = parseInt(t.dataset.meal);
-    const p = currentProfile(), m = p.meals[mealIdx];
-    ensureItemDefaults(m);
-    const k = t.dataset.k;
-    const it = m.items[k].find(x=>x.foodId===t.dataset.food);
-    if (!it) return;
-    const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
-    it.autoPct = v;
-    t.value = v;
-    save();
-    updateMealBadges(mealIdx, m);
-  }
-  else if (t.dataset.role==='grams'){
+ const mealIdx = parseInt(t.dataset.meal);
+ const p = currentProfile(), m = p.meals[mealIdx];
+ ensureItemDefaults(m);
+ const k = t.dataset.k;
+ const it = m.items[k].find(x=>x.foodId===t.dataset.food);
+ if (!it) return;
+ const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+ it.autoPct = v;
+ t.value = v;
+ save();
+ updateMealBadges(mealIdx, m);
+ }
+ else if (t.dataset.role==='grams'){
     const mealIdx = parseInt(t.dataset.meal);
     const p = currentProfile(), m=p.meals[mealIdx];
     const arr = m.items[t.dataset.k]; const it = arr.find(x=>x.foodId===t.dataset.food);
@@ -1451,6 +1458,41 @@ els.mealsContainer.addEventListener('change', e=>{
     m.name = t.value; save(); renderPreview();
   }else if (t.dataset.role==='variantSelect'){
     switchVariant(parseInt(t.dataset.meal), t.value);
+  }
+});
+
+// Realtime update: input su grammi e percentuale
+els.mealsContainer.addEventListener('input', e=>{
+  const t=e.target;
+  if (t.dataset.role==='grams') {
+    const mealIdx = parseInt(t.dataset.meal);
+    const p = currentProfile(), m=p.meals[mealIdx];
+    const arr = m.items[t.dataset.k];
+    const it = arr.find(x=>x.foodId===t.dataset.food);
+    if (!it) return;
+    let v = parse(t.value);
+    if (state.ui?.snapManual5) {
+      const {g,dir} = roundTo5WithDir(v);
+      v = g; it.approxDir = dir; t.value = g;
+    } else {
+      it.approxDir = null;
+    }
+    it.g = v;
+    it.auto=false;
+    syncActiveVariant(mealIdx);
+    save();
+    updateMealBadges(mealIdx, m);
+  } else if (t.dataset.role==='itemPct') {
+    const mealIdx = parseInt(t.dataset.meal);
+    const p = currentProfile(), m=p.meals[mealIdx];
+    ensureItemDefaults(m);
+    const it = m.items[t.dataset.k].find(x=>x.foodId===t.dataset.food);
+    if (!it) return;
+    const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+    it.autoPct = v;
+    t.value = v;
+    save();
+    updateMealBadges(mealIdx, m);
   }
 });
 els.mealsContainer.addEventListener('click', e=>{
@@ -1535,13 +1577,11 @@ els.logoutBtn?.addEventListener('click', async () => {
 });
 
 onAuthStateChanged(auth, (user) => {
-  console.log('[AUTH] state', user ? ('IN ' + (user.email||user.uid)) : 'OUT');
   BOOTING = false;
   setNetStatus();
  updateForceSyncBtn();
   if (user) {
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
-    setAuthDebug('Sessione attiva: ' + (user.email || user.uid));
     setSyncState('warn','Connessione…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
@@ -1550,7 +1590,6 @@ onAuthStateChanged(auth, (user) => {
     });
   } else {
     updateBadges({auth:'neu', authText:''});
-    setAuthDebug('Sessione non attiva.');
     setSyncState('neu','—');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
