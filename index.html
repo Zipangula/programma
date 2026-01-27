@@ -157,8 +157,7 @@
    <p>Schede: Planner - Impostazioni - Alimenti - Anteprima</p>
   </div>
   <div class="header-status">
-   <span id="authBadge" class="badge neu">Non loggato</span>
-   <span id="netBadge" class="badge neu">Rete: —</span>
+   <span id="authBadge" class="badge neu"></span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
   </div>
  </div>
@@ -213,15 +212,15 @@
    <button class="secondary" id="registerBtn">Crea account</button>
    <button class="secondary danger" id="logoutBtn">Logout</button>
   </div>
-   <div class="row two" style="margin-top:6px"> 
-  <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
-  <div class="inline right" style="justify-content:flex-end">
-   <span class="muted" id="netStatus"></span>
-   <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione con il cloud">Forza sync</button>
-  </div>
- </div> 
- <div id="syncDetails" class="muted" style="margin-top:6px"></div>
- <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
+  <div class="row two" style="margin-top:6px"> 
+ <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
+ <div class="inline right" style="justify-content:flex-end">
+  <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
+ </div>
+</div>
+  <div id="authDebug" class="muted" style="margin-top:6px"></div>
+<div id="syncDetails" class="muted" style="margin-top:6px"></div>
+<div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
     <div class="sec">
@@ -487,11 +486,19 @@ function save(){
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
 let lastSyncAt = 0;
 
-function updateBadges({auth='neu', authText='Non loggato', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
-  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText; }
+function updateBadges({auth='neu', authText='', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
+  if (els.authBadge){
+  els.authBadge.className = 'badge ' + auth;
+  els.authBadge.textContent = authText || '';
+  els.authBadge.classList.toggle('hidden', !authText);
+}
   if (els.netBadge){ els.netBadge.className = 'badge ' + net; els.netBadge.textContent = netText; }
   if (els.syncBadge){ els.syncBadge.className = 'badge ' + sync; els.syncBadge.textContent = syncText; }
   if (els.syncDetails){ els.syncDetails.textContent = details || ''; }
+}
+
+function setAuthDebug(msg){
+  if (els.authDebug) els.authDebug.textContent = msg || '';
 }
 
 function setNetStatus(){
@@ -501,7 +508,16 @@ function setNetStatus(){
     net: on ? 'ok' : 'warn',
     netText: 'Rete: ' + (on ? 'Online' : 'Offline')
   });
+ updateForceSyncBtn();
 }
+
+function updateForceSyncBtn() {
+ if (!els.forceSyncBtn) return;
+ const can = !!remote.uid && navigator.onLine;
+ els.forceSyncBtn.disabled = !can;
+ els.forceSyncBtn.title = can ? 'Forza sincronizzazione (upload/download)' : (!navigator.onLine ? 'Offline: impossibile sincronizzare' : 'Fai login per sincronizzare');
+}
+
 window.addEventListener('online', setNetStatus);
 window.addEventListener('offline', setNetStatus);
 
@@ -533,6 +549,43 @@ async function pushStateToCloud(){
   }
 }
 
+
+async function forceResync() {
+ if (!remote.uid) return;
+ const ref = userDocRef(remote.uid);
+ try {
+  setSyncState('warn','Risincronizzo…');
+  const snap = await getDoc(ref);
+  const localTs = state?._meta?.updatedAt || 0;
+  if (!snap.exists()) {
+   // Nulla sul cloud: carico lo stato locale
+   await pushStateToCloud();
+   return;
+  }
+  const cloudState = snap.data().state;
+  const cloudTs = cloudState?._meta?.updatedAt || 0;
+  if (cloudTs > localTs) {
+   // Cloud più recente: scarico
+   remote.applyingRemote = true;
+   state = cloudState;
+   localStorage.setItem(KEY, JSON.stringify(state));
+   initProfileUI();
+   remote.applyingRemote = false;
+   lastSyncAt = Date.now();
+   setSyncState('ok','Scaricato');
+  } else if (localTs > cloudTs) {
+   // Locale più recente: carico
+   await pushStateToCloud();
+  } else {
+   lastSyncAt = Date.now();
+   setSyncState('ok','In sync');
+  }
+ } catch (e) {
+  console.error('[SYNC] forceResync error:', e);
+  setSyncState('err','Errore');
+  if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
+ }
+}
 function scheduleRemoteSave(){
   if(!remote.uid) return;
   if(remote.applyingRemote) return;
@@ -703,9 +756,9 @@ const els = {
  // Auth/Sync badges
  forceSyncBtn: $('#forceSyncBtn'),
  authBadge: $('#authBadge'),
- netBadge: $('#netBadge'),
  syncBadge: $('#syncBadge'),
  syncDetails: $('#syncDetails'),
+  authDebug: $('#authDebug'),
 };
 
 /* ========= Tabs ========= */
@@ -868,8 +921,8 @@ function roundTo5WithDir(gramsExact){
 }
 
 /* ========= Planner: pasti + varianti ========= */
-function ensureMeals(p){
-  const n = parseInt(els.mealsCount.value||p.mealsCount);
+function ensureMeals(p, nOverride){
+  const n = parseInt((nOverride ?? p.mealsCount ?? els.mealsCount.value) || 0);
   p.mealsCount = n;
   while (p.meals.length < n){
     p.meals.push({
@@ -885,7 +938,7 @@ function ensureMeals(p){
       const vid = crypto.randomUUID();
       m.variants = [{id:vid, name:'Tipo 1', items:cloneItems(m.items)}];
       m.activeVarId = vid;
-    }else if (!m.activeVarId){
+    } else if (!m.activeVarId){
       m.activeVarId = m.variants[0].id;
     }
   });
@@ -953,6 +1006,8 @@ function macroBox(k,label,idx,m){
         </div>
       </div>
       <div class="inline">
+        <span class="muted">%</span>
+        <input type="number" min="0" max="100" step="5" style="width:64px" value="${it.autoPct ?? 100}" data-role="itemPct" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" title="Percentuale del target macro che questo alimento deve coprire"/>
         <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
         <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
       </div>
@@ -973,11 +1028,64 @@ function macroBox(k,label,idx,m){
   </div>`;
 }
 
+
+function ensureItemDefaults(m){
+  ['c','p','f'].forEach(k=>{
+    (m.items?.[k]||[]).forEach(it=>{ if (typeof it.autoPct !== 'number') it.autoPct = 100; });
+  });
+}
+function calcMealActual(m){
+  const tot = {c:0,p:0,f:0,kcal:0};
+  ['c','p','f'].forEach(g=>{
+    (m.items?.[g]||[]).forEach(it=>{
+      const food = state.foods.find(x=>x.id===it.foodId);
+      if(!food) return;
+      const grams = (it.g||0);
+      tot.c += (food.c||0) * grams/100;
+      tot.p += (food.p||0) * grams/100;
+      tot.f += (food.fat||0) * grams/100;
+    });
+  });
+  tot.kcal = tot.c*KCAL_C + tot.p*KCAL_P + tot.f*KCAL_F;
+  return tot;
+}
+function calcMealResidual(m){
+  const a = calcMealActual(m);
+  return { c: (m.macros.c - a.c), p: (m.macros.p - a.p), f: (m.macros.f - a.f) };
+}
+function fmtSigned(x){
+  const v = Math.round(x*10)/10;
+  const s = v>0 ? '+' : '';
+  return s + fmt(v);
+}
+function updateMealBadges(mealIdx, m){
+  const a = calcMealActual(m);
+  const r = calcMealResidual(m);
+  const aEl = document.getElementById('mealActual-'+mealIdx);
+  const rEl = document.getElementById('mealResid-'+mealIdx);
+
+  if (aEl) {
+    aEl.className = 'badge neu';
+    aEl.textContent = `Provvisorio: ${fmt(a.kcal)} kcal - C ${fmt(a.c)} g - P ${fmt(a.p)} g - G ${fmt(a.f)} g`;
+  }
+
+  if (rEl) {
+    // Soglia: ±2 g (ok se tutti i residui sono dentro la soglia)
+    const TH = 2;
+    const over = (r.c < -TH) || (r.p < -TH) || (r.f < -TH);      // sforamento (negativo)
+    const far  = (Math.abs(r.c) > TH) || (Math.abs(r.p) > TH) || (Math.abs(r.f) > TH);
+    const status = over ? 'err' : (far ? 'warn' : 'ok');
+    rEl.className = 'badge ' + status;
+    rEl.textContent = `Residuo: C ${fmtSigned(r.c)} g - P ${fmtSigned(r.p)} g - G ${fmtSigned(r.f)} g`;
+  }
+}
+
 /* Render Planner */
 function renderPlanner(){
   const p = currentProfile();
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
+    ensureItemDefaults(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -995,6 +1103,8 @@ function renderPlanner(){
           <div class="inline">${variantsSelect}</div>
         </div>
         <span class="badge">${fmt(kcalTotal)} kcal - C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>
+      <span class="badge neu" id="mealActual-${idx}"></span>
+      <span class="badge neu" id="mealResid-${idx}"></span>
       </div>
       <div class="macro-box">
         ${macroBox('c','Carboidrati',idx,m)}
@@ -1003,6 +1113,7 @@ function renderPlanner(){
       </div>
     `;
     cont.appendChild(card);
+    updateMealBadges(idx, m);
   });
   summarize();
   renderPreview();
@@ -1271,7 +1382,7 @@ function addItem(mealIdx,k,foodId){
   const p = currentProfile(), m=p.meals[mealIdx];
   if (!foodId) return;
   if (m.items[k].some(it=>it.foodId===foodId)) return;
-  m.items[k].push({foodId, g:0, auto:false, approxDir:null});
+  m.items[k].push({foodId, g:0, auto:false, approxDir:null, autoPct:100});
   syncActiveVariant(mealIdx);
   save(); renderPlanner();
 }
@@ -1286,11 +1397,12 @@ function autoFillOne(mealIdx,k){
   if (!m.items[k].length){
     const f = state.foods.find(x=>x.group===k);
     if (!f){ alert('Nessun alimento nel gruppo selezionato.'); return; }
-    m.items[k].push({foodId:f.id,g:0,auto:false, approxDir:null});
+    m.items[k].push({foodId:f.id,g:0,auto:false, approxDir:null, autoPct:100});
   }
   const it = m.items[k][0];
   const food = state.foods.find(x=>x.id===it.foodId);
-  const targetG = m.macros[k];
+  const pct = ((it.autoPct ?? 100)/100);
+  const targetG = m.macros[k]*pct;
   const per100 = k==='c'?food.c : k==='p'?food.p : food.fat;
   if (per100<=0){ alert('Impossibile calcolare: alimento con 0 g del macro selezionato.'); return; }
   const exact = targetG / (per100/100);
@@ -1304,6 +1416,19 @@ function autoFillOne(mealIdx,k){
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
+  else if (t.dataset.role==='itemPct') {
+    const mealIdx = parseInt(t.dataset.meal);
+    const p = currentProfile(), m = p.meals[mealIdx];
+    ensureItemDefaults(m);
+    const k = t.dataset.k;
+    const it = m.items[k].find(x=>x.foodId===t.dataset.food);
+    if (!it) return;
+    const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+    it.autoPct = v;
+    t.value = v;
+    save();
+    updateMealBadges(mealIdx, m);
+  }
   else if (t.dataset.role==='grams'){
     const mealIdx = parseInt(t.dataset.meal);
     const p = currentProfile(), m=p.meals[mealIdx];
@@ -1339,7 +1464,8 @@ els.mealsContainer.addEventListener('click', e=>{
     const f = state.foods.find(x=>x.id===food);
     const per100 = k==='c'?f.c : k==='p'?f.p : f.fat;
     if (per100<=0){ alert('Impossibile calcolare: macro = 0.'); return; }
-    const exact = m.macros[k] / (per100/100);
+    const pct = ((it.autoPct ?? 100)/100);
+ const exact = (m.macros[k]*pct) / (per100/100);
     const {g,dir} = roundTo5WithDir(exact);
     it.g = g; it.auto = true; it.approxDir = dir;
     syncActiveVariant(mealIdx);
@@ -1364,16 +1490,34 @@ els.resetPwdBtn?.addEventListener('click', async () => {
 });
 
 els.forceSyncBtn?.addEventListener('click', async () => {
-  if(!remote.uid){ alert('Fai login prima per sincronizzare.'); return; }
-  await pushStateToCloud();
+ if (!remote.uid) { alert('Fai login prima per sincronizzare.'); return; }
+ if (!navigator.onLine) { alert('Sei offline: riconnettiti per sincronizzare.'); return; }
+ await forceResync();
 });
 
 els.loginBtn?.addEventListener('click', async () => {
+  const email = els.email?.value?.trim();
+  const pwd = els.password?.value;
+  if (!email || !pwd) { setAuthDebug('Inserisci email e password.'); return; }
+  els.loginBtn.disabled = true;
+  setAuthDebug('Login in corso…');
   try {
-    await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
+    await signInWithEmailAndPassword(auth, email, pwd);
+    const u = auth.currentUser;
+    if (u) {
+      updateBadges({auth:'ok', authText:'Loggato: ' + (u.email || u.uid)});
+      setAuthDebug('Login OK.');
+    } else {
+      updateBadges({auth:'warn', authText:'Accesso…'});
+      setAuthDebug('Login completato, in attesa conferma sessione…');
+    }
   } catch (e) {
+    console.error('[AUTH] login error', e);
+    setAuthDebug('Login fallito: ' + (e.code || '') + ' ' + (e.message || ''));
     alert('Login fallito: ' + (e.message || e.code));
     setSyncState('err','Login');
+  } finally {
+    els.loginBtn.disabled = false;
   }
 });
 
@@ -1391,10 +1535,13 @@ els.logoutBtn?.addEventListener('click', async () => {
 });
 
 onAuthStateChanged(auth, (user) => {
+  console.log('[AUTH] state', user ? ('IN ' + (user.email||user.uid)) : 'OUT');
   BOOTING = false;
   setNetStatus();
+ updateForceSyncBtn();
   if (user) {
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
+    setAuthDebug('Sessione attiva: ' + (user.email || user.uid));
     setSyncState('warn','Connessione…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
@@ -1402,7 +1549,8 @@ onAuthStateChanged(auth, (user) => {
       if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
     });
   } else {
-    updateBadges({auth:'neu', authText:'Non loggato'});
+    updateBadges({auth:'neu', authText:''});
+    setAuthDebug('Sessione non attiva.');
     setSyncState('neu','—');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
@@ -1527,7 +1675,7 @@ function setProfileHandlers(){
   });
 
   // Pasti & split
-  els.mealsCount.addEventListener('change', ()=>{ ensureMeals(currentProfile()); buildPercentages(); renderPercentages(); renderPlanner(); save(); });
+  els.mealsCount.addEventListener('change', ()=>{ ensureMeals(currentProfile(), Number(els.mealsCount.value)); buildPercentages(); renderPercentages(); renderPlanner(); save(); });
   els.splitMode.addEventListener('change', ()=>{ currentProfile().splitMode = els.splitMode.value; buildPercentages(); renderPercentages(); save(); });
   els.applySplitBtn.addEventListener('click', ()=>{ applyDistribution(); });
 
