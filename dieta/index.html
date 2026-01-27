@@ -166,9 +166,8 @@
 </header>
 
 <nav class="tabs noprint">
-  
- <a class=\"tab-btn\" href=\"../\" style=\"text-decoration:none\" title=\"Torna alla Home\">Home</a>
-<button class="tab-btn active" data-tab="page-planner">Planner</button>
+ <button class="tab-btn" data-home="1" title="Torna alla Home">Home</button>
+  <button class="tab-btn active" data-tab="page-planner">Planner</button>
   <button class="tab-btn" data-tab="page-settings">Impostazioni</button>
   <button class="tab-btn" data-tab="page-foods">Alimenti</button>
   <button class="tab-btn" data-tab="page-preview">Anteprima</button>
@@ -771,7 +770,10 @@ function setTab(id){
   tabButtons.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
   localStorage.setItem('diet-tab', id);
 }
-tabButtons.forEach(b=> b.addEventListener('click', ()=> setTab(b.dataset.tab)));
+tabButtons.forEach(b=> b.addEventListener('click', (e)=>{
+  if (b.dataset.home==='1') { window.location.href = '../'; return; }
+  setTab(b.dataset.tab);
+}));
 const lastTab = localStorage.getItem('diet-tab');
 if (lastTab) setTab(lastTab);
 
