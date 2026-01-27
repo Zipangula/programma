@@ -23,6 +23,10 @@
   }
   header h1{margin:0;font-size:clamp(18px,3.6vw,26px)}
   header p{margin:4px 0 0;color:var(--muted)}
+ /* Header badges */
+ .headerbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+ .header-status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+
 
   /* Tabs */
   .tabs{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px}
@@ -147,8 +151,17 @@
 </noscript>
 
 <header>
-  <h1>Piano Dieta Settimanale</h1>
-  <p>Schede: Planner - Impostazioni - Alimenti - Anteprima</p>
+ <div class="headerbar">
+  <div>
+   <h1>Piano Dieta Settimanale</h1>
+   <p>Schede: Planner - Impostazioni - Alimenti - Anteprima</p>
+  </div>
+  <div class="header-status">
+   <span id="authBadge" class="badge neu">Non loggato</span>
+   <span id="netBadge" class="badge neu">Rete: —</span>
+   <span id="syncBadge" class="badge neu">Sync: —</span>
+  </div>
+ </div>
 </header>
 
 <nav class="tabs noprint">
@@ -200,11 +213,15 @@
    <button class="secondary" id="registerBtn">Crea account</button>
    <button class="secondary danger" id="logoutBtn">Logout</button>
   </div>
-  <div class="row two" style="margin-top:6px">
-   <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button>
-   <span class="muted" id="netStatus"></span>
-  </div>
-  <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
+  <div class="row two" style="margin-top:6px"> 
+ <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
+ <div class="inline right" style="justify-content:flex-end">
+  <span class="muted" id="netStatus"></span>
+  <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
+ </div>
+</div>
+  <div id="syncDetails" class="muted" style="margin-top:6px"></div>
+<div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
     <div class="sec">
@@ -484,7 +501,16 @@ function setNetStatus(){
     net: on ? 'ok' : 'warn',
     netText: 'Rete: ' + (on ? 'Online' : 'Offline')
   });
+ updateForceSyncBtn();
 }
+
+function updateForceSyncBtn() {
+ if (!els.forceSyncBtn) return;
+ const can = !!remote.uid && navigator.onLine;
+ els.forceSyncBtn.disabled = !can;
+ els.forceSyncBtn.title = can ? 'Forza sincronizzazione (upload/download)' : (!navigator.onLine ? 'Offline: impossibile sincronizzare' : 'Fai login per sincronizzare');
+}
+
 window.addEventListener('online', setNetStatus);
 window.addEventListener('offline', setNetStatus);
 
@@ -516,6 +542,43 @@ async function pushStateToCloud(){
   }
 }
 
+
+async function forceResync() {
+ if (!remote.uid) return;
+ const ref = userDocRef(remote.uid);
+ try {
+  setSyncState('warn','Risincronizzo…');
+  const snap = await getDoc(ref);
+  const localTs = state?._meta?.updatedAt || 0;
+  if (!snap.exists()) {
+   // Nulla sul cloud: carico lo stato locale
+   await pushStateToCloud();
+   return;
+  }
+  const cloudState = snap.data().state;
+  const cloudTs = cloudState?._meta?.updatedAt || 0;
+  if (cloudTs > localTs) {
+   // Cloud più recente: scarico
+   remote.applyingRemote = true;
+   state = cloudState;
+   localStorage.setItem(KEY, JSON.stringify(state));
+   initProfileUI();
+   remote.applyingRemote = false;
+   lastSyncAt = Date.now();
+   setSyncState('ok','Scaricato');
+  } else if (localTs > cloudTs) {
+   // Locale più recente: carico
+   await pushStateToCloud();
+  } else {
+   lastSyncAt = Date.now();
+   setSyncState('ok','In sync');
+  }
+ } catch (e) {
+  console.error('[SYNC] forceResync error:', e);
+  setSyncState('err','Errore');
+  if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
+ }
+}
 function scheduleRemoteSave(){
   if(!remote.uid) return;
   if(remote.applyingRemote) return;
@@ -1347,8 +1410,9 @@ els.resetPwdBtn?.addEventListener('click', async () => {
 });
 
 els.forceSyncBtn?.addEventListener('click', async () => {
-  if(!remote.uid){ alert('Fai login prima per sincronizzare.'); return; }
-  await pushStateToCloud();
+ if (!remote.uid) { alert('Fai login prima per sincronizzare.'); return; }
+ if (!navigator.onLine) { alert('Sei offline: riconnettiti per sincronizzare.'); return; }
+ await forceResync();
 });
 
 els.loginBtn?.addEventListener('click', async () => {
@@ -1376,6 +1440,7 @@ els.logoutBtn?.addEventListener('click', async () => {
 onAuthStateChanged(auth, (user) => {
   BOOTING = false;
   setNetStatus();
+ updateForceSyncBtn();
   if (user) {
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
     setSyncState('warn','Connessione…');
