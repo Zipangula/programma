@@ -157,7 +157,8 @@
    <p>Schede: Planner - Impostazioni - Alimenti - Anteprima</p>
   </div>
   <div class="header-status">
-   <span id="authBadge" class="badge neu">Non loggato</span>
+   <span id="authBadge" class="badge neu"></span>
+   <span id="netBadge" class="badge neu">Rete: —</span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
   </div>
  </div>
@@ -215,11 +216,11 @@
   <div class="row two" style="margin-top:6px"> 
  <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button> 
  <div class="inline right" style="justify-content:flex-end">
+  <span class="muted" id="netStatus"></span>
   <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
  </div>
 </div>
-  <div id="authDebug" class="muted" style="margin-top:6px"></div>
-<div id="syncDetails" class="muted" style="margin-top:6px"></div>
+  <div id="syncDetails" class="muted" style="margin-top:6px"></div>
 <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
@@ -486,15 +487,13 @@ function save(){
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
 let lastSyncAt = 0;
 
-function updateBadges({auth='neu', authText='Non loggato', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
-  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText; }
+function updateBadges({auth='neu', authText='', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
+  if (els.authBadge){ els.authBadge.className = 'badge ' + auth; els.authBadge.textContent = authText || '';
+  /* auth badge visibility */
+  els.authBadge.classList.toggle('hidden', !authText); }
   if (els.netBadge){ els.netBadge.className = 'badge ' + net; els.netBadge.textContent = netText; }
   if (els.syncBadge){ els.syncBadge.className = 'badge ' + sync; els.syncBadge.textContent = syncText; }
   if (els.syncDetails){ els.syncDetails.textContent = details || ''; }
-}
-
-function setAuthDebug(msg){
-  if (els.authDebug) els.authDebug.textContent = msg || '';
 }
 
 function setNetStatus(){
@@ -755,7 +754,6 @@ const els = {
  netBadge: $('#netBadge'),
  syncBadge: $('#syncBadge'),
  syncDetails: $('#syncDetails'),
-  authDebug: $('#authDebug'),
 };
 
 /* ========= Tabs ========= */
@@ -931,7 +929,6 @@ function ensureMeals(p){
   }
   while (p.meals.length > n){ p.meals.pop(); }
   p.meals.forEach(m=>{
-      if (!m.autoPct) m.autoPct = {c:100,p:100,f:100};
     if (!m.variants || !m.variants.length){
       const vid = crypto.randomUUID();
       m.variants = [{id:vid, name:'Tipo 1', items:cloneItems(m.items)}];
@@ -1004,7 +1001,11 @@ function macroBox(k,label,idx,m){
         </div>
       </div>
       <div class="inline">
-        <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
+        <div class=\"inline\" style=\"gap:6px\">
+          <span class=\"muted\">%</span>
+          <input type=\"number\" min=\"0\" max=\"100\" step=\"5\" style=\"width:64px\" value=\"${it.autoPct ?? 100}\" data-role=\"itemPct\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\" title=\"Percentuale del target macro che questo alimento deve coprire\"/>
+        </div>
+        <button class=\"secondary\" data-role=\"auto1\" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
         <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
       </div>
     </div>
@@ -1018,11 +1019,6 @@ function macroBox(k,label,idx,m){
       <select data-role="addFood" data-meal="${idx}" data-k="${k}">
         <option value="">+ Aggiungi alimento...</option>${opts}
       </select>
-      <div class="inline" style="gap:6px">
-        <span class="muted">Auto%</span>
-        <input type="number" min="0" max="100" step="5" style="width:70px" value="${(m.autoPct?.[k] ?? 100)}" data-role="autoPct" data-meal="${idx}" data-k="${k}" />
-        <span class="unit">%</span>
-      </div>
       <button class="secondary" data-role="autoFill" data-meal="${idx}" data-k="${k}">Auto (1 alimento)</button>
     </div>
     <div style="margin-top:6px">${items || '<div class="muted">Nessun alimento</div>'}</div>
@@ -1034,6 +1030,7 @@ function renderPlanner(){
   const p = currentProfile();
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
+    ensureItemDefaults(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1327,7 +1324,7 @@ function addItem(mealIdx,k,foodId){
   const p = currentProfile(), m=p.meals[mealIdx];
   if (!foodId) return;
   if (m.items[k].some(it=>it.foodId===foodId)) return;
-  m.items[k].push({foodId, g:0, auto:false, approxDir:null});
+  m.items[k].push({foodId, g:0, auto:false, approxDir:null, autoPct:100});
   syncActiveVariant(mealIdx);
   save(); renderPlanner();
 }
@@ -1360,13 +1357,14 @@ function autoFillOne(mealIdx,k){
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
   if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
-  else if (t.dataset.role==='autoPct') {
+  else if (t.dataset.role==='itemPct') {
       const mealIdx = parseInt(t.dataset.meal);
-      const k = t.dataset.k;
-      const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
       const p = currentProfile(), m = p.meals[mealIdx];
-      if (!m.autoPct) m.autoPct = {c:100,p:100,f:100};
-      m.autoPct[k] = v;
+      const k = t.dataset.k;
+      const it = m.items[k].find(x=>x.foodId===t.dataset.food);
+      if (!it) return;
+      const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+      it.autoPct = v;
       t.value = v;
       save();
     }
@@ -1436,31 +1434,11 @@ els.forceSyncBtn?.addEventListener('click', async () => {
 });
 
 els.loginBtn?.addEventListener('click', async () => {
-  const email = els.email?.value?.trim();
-  const pwd = els.password?.value;
-  if (!email || !pwd) { setAuthDebug('Inserisci email e password.'); return; }
-  if (location.protocol === 'file:') {
-    setAuthDebug('Stai aprendo il file in locale (file://). Pubblica su hosting (https) per usare Firebase Auth.');
-  }
-  els.loginBtn.disabled = true;
-  setAuthDebug('Login in corso…');
   try {
-    await signInWithEmailAndPassword(auth, email, pwd);
-    const u = auth.currentUser;
-    if (u) {
-      updateBadges({auth:'ok', authText:'Loggato: ' + (u.email || u.uid)});
-      setAuthDebug('Login OK.');
-    } else {
-      updateBadges({auth:'warn', authText:'Accesso…'});
-      setAuthDebug('Login completato, in attesa conferma sessione…');
-    }
+    await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value);
   } catch (e) {
-    console.error('[AUTH] login error', e);
-    setAuthDebug('Login fallito: ' + (e.code || '') + ' ' + (e.message || ''));
     alert('Login fallito: ' + (e.message || e.code));
     setSyncState('err','Login');
-  } finally {
-    els.loginBtn.disabled = false;
   }
 });
 
@@ -1478,13 +1456,11 @@ els.logoutBtn?.addEventListener('click', async () => {
 });
 
 onAuthStateChanged(auth, (user) => {
-  console.log('[AUTH] state', user ? ('IN ' + (user.email||user.uid)) : 'OUT');
   BOOTING = false;
   setNetStatus();
  updateForceSyncBtn();
   if (user) {
     updateBadges({auth:'ok', authText: 'Loggato: ' + (user.email || user.uid)});
-    setAuthDebug('Sessione attiva: ' + (user.email || user.uid));
     setSyncState('warn','Connessione…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
@@ -1492,8 +1468,7 @@ onAuthStateChanged(auth, (user) => {
       if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
     });
   } else {
-    updateBadges({auth:'neu', authText:'Non loggato'});
-    setAuthDebug('Sessione non attiva.');
+    updateBadges({auth:'neu', authText:''});
     setSyncState('neu','—');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
