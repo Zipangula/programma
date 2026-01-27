@@ -197,7 +197,7 @@
    <button class="secondary" id="resetPwdBtn" title="Invia email per reimpostare la password">Password dimenticata?</button>
    <span class="muted" id="netStatus"></span>
   </div>
-  <div class="muted" id="syncStatus" style="margin-top:6px"></div>
+  <div class="hintbar" id="syncStatus" style="margin-top:6px"></div>
  </div>
 
     <div class="sec">
@@ -455,14 +455,25 @@ function save(){
  
 // ===== Cloud Sync (per utente) =====
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
+let lastSyncAt = 0;
 
-function setSyncStatus(msg){ if (els.syncStatus) els.syncStatus.textContent = msg; }
 function setNetStatus(){
   if(!els.netStatus) return;
   els.netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
 }
 window.addEventListener('online', setNetStatus);
 window.addEventListener('offline', setNetStatus);
+
+function renderSyncStatus(extraMsg=''){
+  if(!els.syncStatus) return;
+  const user = auth.currentUser;
+  const who = user ? (user.email || user.uid) : 'Non loggato';
+  const net = navigator.onLine ? 'Online' : 'Offline';
+  const last = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : '—';
+  const head = user ? '✅ Loggato' : 'ℹ️ Non loggato';
+  const extra = extraMsg ? (' · ' + extraMsg) : '';
+  els.syncStatus.textContent = `${head}: ${who} · Rete: ${net} · Ultima sync: ${last}${extra}`;
+}
 
 function userDocRef(uid){ return doc(db, 'users', uid, 'apps', 'dietPlanner'); }
 
@@ -471,10 +482,11 @@ async function pushStateToCloud(){
   const ref = userDocRef(remote.uid);
   try {
     await setDoc(ref, { state }, { merge: true });
-    setSyncStatus('✅ Salvato sul cloud (' + new Date().toLocaleTimeString() + ')');
+    lastSyncAt = Date.now();
+    renderSyncStatus('Salvato sul cloud');
   } catch (e) {
     console.error('[SYNC] setDoc error:', e);
-    setSyncStatus('❌ Errore sync: ' + (e.code || e.message));
+    renderSyncStatus('Errore sync: ' + (e.code || e.message));
   }
 }
 
@@ -502,11 +514,12 @@ async function startCloudSync(uid){
       localStorage.setItem(KEY, JSON.stringify(state));
       initProfileUI();
       remote.applyingRemote = false;
-      setSyncStatus('✅ Ripristinato dal cloud (' + new Date().toLocaleTimeString() + ')');
+      lastSyncAt = Date.now();
+      renderSyncStatus('Ripristinato dal cloud');
     } else if(localTs > cloudTs){
       await pushStateToCloud();
     } else {
-      setSyncStatus('ℹ️ In sync');
+      renderSyncStatus('In sync');
     }
   } else {
     await pushStateToCloud();
@@ -524,11 +537,12 @@ async function startCloudSync(uid){
       localStorage.setItem(KEY, JSON.stringify(state));
       initProfileUI();
       remote.applyingRemote = false;
-      setSyncStatus('✅ Aggiornato dal cloud (' + new Date().toLocaleTimeString() + ')');
+      lastSyncAt = Date.now();
+      renderSyncStatus('Aggiornato dal cloud');
     }
   }, (err) => {
     console.error('[SYNC] onSnapshot error:', err);
-    setSyncStatus('❌ Listener sync: ' + (err.code || err.message));
+    renderSyncStatus('Listener error: ' + (err.code || err.message));
   });
 }
  state._meta = state._meta || {};
@@ -1315,13 +1329,13 @@ onAuthStateChanged(auth, (user) => {
   BOOTING = false;
   setNetStatus();
   if (user) {
-    setSyncStatus('🔄 Connessione al cloud…');
+    renderSyncStatus('Connessione al cloud…');
     startCloudSync(user.uid).catch((e) => {
       console.error('[SYNC] startCloudSync error:', e);
-      setSyncStatus('❌ Sync init: ' + (e.code || e.message));
+      renderSyncStatus('Sync init: ' + (e.code || e.message));
     });
   } else {
-    setSyncStatus('ℹ️ Sync disattivo: fai login per salvare sul cloud');
+    renderSyncStatus('Fai login per salvare sul cloud');
     if (remote?.unsub) remote.unsub();
     if (remote) remote.uid = null;
   }
