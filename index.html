@@ -486,7 +486,7 @@ function save(){
 let remote = { uid:null, unsub:null, applyingRemote:false, saveTimer:null };
 let lastSyncAt = 0;
 
-function updateBadges({auth='neu', authText='', net='neu', netText='Rete: —', sync='neu', syncText='Sync: —', details='' } = {}){
+function updateBadges({auth='neu', authText='', net='neu', netText='', sync='neu', syncText='Sync: —', details='' } = {}){
   if (els.authBadge){
   els.authBadge.className = 'badge ' + auth;
   els.authBadge.textContent = authText || '';
@@ -758,7 +758,6 @@ const els = {
  authBadge: $('#authBadge'),
  syncBadge: $('#syncBadge'),
  syncDetails: $('#syncDetails'),
-  authDebug: $('#authDebug'),
 };
 
 /* ========= Tabs ========= */
@@ -1006,6 +1005,8 @@ function macroBox(k,label,idx,m){
         </div>
       </div>
       <div class="inline">
+        <span class="muted">%</span>
+        <input type="number" min="0" max="100" step="5" style="width:64px" value="${it.autoPct ?? 100}" data-role="itemPct" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" title="Percentuale del target macro che questo alimento deve coprire"/>
         <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
         <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
       </div>
@@ -1074,7 +1075,6 @@ function updateMealBadges(mealIdx, m){
   }
 
   if (rEl) {
-    // Soglie: ±2 g sui macro, ±20 kcal sulle calorie
     const THG = 2;
     const THK = 20;
     const over = (r.c < -THG) || (r.p < -THG) || (r.f < -THG) || (r.kcal < -THK);
@@ -1090,7 +1090,7 @@ function renderPlanner(){
   const p = currentProfile();
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
-  ensureItemDefaults(m);
+    ensureItemDefaults(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1108,8 +1108,8 @@ function renderPlanner(){
           <div class="inline">${variantsSelect}</div>
         </div>
         <span class="badge">${fmt(kcalTotal)} kcal - C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>
- <span class="badge neu" id="mealActual-${idx}"></span>
- <span class="badge neu" id="mealResid-${idx}"></span>
+    <span class="badge neu" id="mealActual-${idx}"></span>
+    <span class="badge neu" id="mealResid-${idx}"></span>
       </div>
       <div class="macro-box">
         ${macroBox('c','Carboidrati',idx,m)}
@@ -1466,11 +1466,10 @@ els.mealsContainer.addEventListener('input', e=>{
     const p = currentProfile(), m=p.meals[mealIdx];
     const it = m.items[t.dataset.k].find(x=>x.foodId===t.dataset.food);
     if (!it) return;
-    // Durante la digitazione NON arrotondiamo: lasciamo inserire qualsiasi numero
     const v = parse(t.value);
     it.g = v;
-    it.auto = false;
-    it.approxDir = null;
+    it.auto=false;
+    it.approxDir=null;
     syncActiveVariant(mealIdx);
     save();
     updateMealBadges(mealIdx, m);
@@ -1581,7 +1580,7 @@ onAuthStateChanged(auth, (user) => {
       if (els.syncDetails) els.syncDetails.textContent = (e.code || e.message);
     });
   } else {
-    updateBadges({auth:'neu', authText:''});
+    updateBadges({auth:'neu', authText:'Non loggato'});
     setSyncState('neu','—');
     if (remote.unsub) remote.unsub();
     remote.uid = null;
