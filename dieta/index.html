@@ -965,28 +965,15 @@ function syncActiveVariant(mealIdx){
   v.items = cloneItems(m.items);
   save();
   renderPreview();
- if (state.ui?.enableMacroVariants){
-  ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
- }
-}
-
-function resetMacroVariantsToCurrent(m){
-  if (!state.ui?.enableMacroVariants) return;
-  ensureMacroVariants(m);
-  ['c','p','f'].forEach(k=>{
-    const mv=m.macroVariants[k];
-    // forza la prima variante come Base e allinea agli items correnti
-    const base = mv.variants[0];
-    base.items = (m.items[k]||[]).map(i=>({...i}));
-    mv.activeId = base.id;
-  });
+  if (state.ui?.enableMacroVariants){
+    ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
+  }
 }
 function switchVariant(mealIdx, varId){
   const p = currentProfile(), m = p.meals[mealIdx];
   const v = m.variants.find(x=>x.id===varId); if (!v) return;
   m.activeVarId = varId;
   m.items = cloneItems(v.items);
- resetMacroVariantsToCurrent(m);
   save(); renderPlanner(); renderPreview();
 }
 function newVariantFromCurrent(mealIdx){
@@ -1055,7 +1042,6 @@ function switchMacroVar(mealIdx,k,varId){
   const p=currentProfile(), m=p.meals[mealIdx];
   ensureMacroVariants(m);
   const mv=m.macroVariants[k];
-  // salva la variante corrente
   syncActiveMacroVar(mealIdx,k);
   if (!mv.variants.some(v=>v.id===varId)) return;
   mv.activeId = varId;
@@ -1213,7 +1199,7 @@ function renderPlanner(){
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
     ensureItemDefaults(m);
- if (state.ui?.enableMacroVariants) ensureMacroVariants(m);
+    if (state.ui?.enableMacroVariants) ensureMacroVariants(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1536,6 +1522,9 @@ function bindInlineFoodEditorEvents(host, id){
     const group = groupLocked ? mode : dominant(c,p,fat);
     Object.assign(f, { name, kcal, c, p, fat, group, groupLocked });
     save();
+    // chiudi editor e aggiorna lista
+    host.classList.add('hidden');
+    host.innerHTML='';
     renderFoods();
   });
 }
