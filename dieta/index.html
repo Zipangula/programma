@@ -143,8 +143,6 @@
     .panel{border:none;background:#fff}
     .meal{page-break-inside:avoid}
   }
-
-#page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
 </style>
 </head>
 <body>
@@ -328,6 +326,16 @@
         </label>
         <label class="inline">
           <input type="checkbox" id="snapManual5"/>
+
+ <label class="inline">
+  <input type="checkbox" id="toggleAllFoods"/>
+  <span>Mostra <b>tutti</b> gli alimenti nei menu di aggiunta (Planner)</span>
+ </label>
+
+ <label class="inline">
+  <input type="checkbox" id="toggleMacroVariants"/>
+  <span>Abilita varianti per macronutrienti nel Planner (es. Pasta/Riso)</span>
+ </label>
           <span>Aggancia i grammi inseriti manualmente a multipli di 5 g</span>
         </label>
       </div>
@@ -707,7 +715,7 @@ function seed(){
     foodsVersion: null,
     profiles:[profile],
     currentProfileId: profile.id,
-    ui:{ showHints:true, foodsCollapsed:{c:false,p:false,f:false}, snapManual5:false, preview:{showC:true,showP:true,showF:true,showTargets:true} }
+    ui:{ showHints:true, foodsCollapsed:{c:false,p:false,f:false}, snapManual5:false, showAllFoods:false, enableMacroVariants:false, preview:{showC:true,showP:true,showF:true,showTargets:true} }
   };
 }
 function currentProfile(){ return state.profiles.find(p=>p.id===state.currentProfileId); }
@@ -738,7 +746,7 @@ const els = {
   // Foods
   foodSearch: $('#foodSearch'),
   fName: $('#fName'), fKcal: $('#fKcal'), fCarb: $('#fCarb'), fProt: $('#fProt'),
-  fFat: $('#fFat'), addFoodBtn: $('#addFoodBtn'),
+  fFat: $('#fFat'), fGroupMode: $('#fGroupMode'), addFoodBtn: $('#addFoodBtn'),
   foodsGroups: $('#foodsGroups'), exportFoodsBtn: $('#exportFoodsBtn'), importFoodsBtn: $('#importFoodsBtn'),
   foodsFile: $('#foodsFile'),
   collapseAllBtn: $('#collapseAllBtn'), expandAllBtn: $('#expandAllBtn'),
@@ -783,9 +791,11 @@ if (lastTab) setTab(lastTab);
   if (typeof state.ui.showHints !== 'boolean') state.ui.showHints = true;
   if (!state.ui.foodsCollapsed) state.ui.foodsCollapsed = {c:false,p:false,f:false};
   if (typeof state.ui.snapManual5 !== 'boolean') state.ui.snapManual5 = false;
+ if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
+ if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
   if (!state.ui.preview) state.ui.preview = {showC:true,showP:true,showF:true,showTargets:true};
   if (!state.foodsVersion || state.foodsVersion !== CURATED_VERSION){
-    state.foods = CURATED_FOODS.slice();
+    state.foods = CURATED_FOODS.map(f=>({ ...f, groupLocked: !!f.groupLocked }));
     state.foodsVersion = CURATED_VERSION;
     save();
   }
@@ -899,7 +909,9 @@ function showFoodFieldHint(target){
 }
 function updateFoodPreview(){
   const c = parse(els.fCarb.value), p = parse(els.fProt.value), f = parse(els.fFat.value);
-  const dom = dominant(c,p,f);
+  let dom = dominant(c,p,f);
+ const gm = (els.fGroupMode?.value || 'auto');
+ if (gm !== 'auto') dom = gm;
   els.foodDominant.className = 'tag ' + (dom || '');
   els.foodDominant.textContent = dom==='c' ? 'CARBOIDRATI' : dom==='p' ? 'PROTEINE' : dom==='f' ? 'GRASSI' : '-';
   els.foodMacroLine.textContent = `C ${c} g - P ${p} g - G ${f} g`;
@@ -911,7 +923,7 @@ Object.keys(FOOD_FIELD_META).forEach(id=>{
   inp.addEventListener('focus', e=> showFoodFieldHint(e.target));
   inp.addEventListener('input', e=> { showFoodFieldHint(e.target); updateFoodPreview(); });
 });
-['fCarb','fProt','fFat','fKcal'].forEach(id=> els[id]?.addEventListener('input', updateFoodPreview));
+['fCarb','fProt','fFat','fKcal','fGroupMode'].forEach(id=> els[id]?.addEventListener('input', updateFoodPreview));
 
 /* ========= Rounding multipli di 5g ========= */
 function roundTo5WithDir(gramsExact){
@@ -956,6 +968,10 @@ function syncActiveVariant(mealIdx){
   v.items = cloneItems(m.items);
   save();
   renderPreview();
+ if (state.ui?.enableMacroVariants){
+   const p=currentProfile(), m=p.meals[mealIdx];
+   ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
+ }
 }
 function switchVariant(mealIdx, varId){
   const p = currentProfile(), m = p.meals[mealIdx];
@@ -991,6 +1007,7 @@ function deleteVariant(mealIdx){
 
 /* Macro box */
 function macroBox(k,label,idx,m){
+ const mvUI = buildMacroVarUI(m, idx, k);
   const opts = state.foods.filter(x=>x.group===k).sort((a,b)=>a.name.localeCompare(b.name))
     .map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
   const items = m.items[k].map(it=>{
@@ -1091,6 +1108,98 @@ function updateMealBadges(mealIdx, m){
   }
 }
 
+
+// ===== Varianti per macronutrienti (opzionale) =====
+function ensureMacroVariants(m){
+  if (!m.macroVariants) m.macroVariants = {c:null,p:null,f:null};
+  ['c','p','f'].forEach(k=>{
+    let mv = m.macroVariants[k];
+    if (!mv || !Array.isArray(mv.variants) || !mv.variants.length){
+      const id = crypto.randomUUID();
+      mv = { activeId: id, variants: [{ id, name: 'Base', items: (m.items?.[k]||[]).map(i=>({...i})) }] };
+      m.macroVariants[k] = mv;
+    }
+    if (!mv.activeId) mv.activeId = mv.variants[0].id;
+    if (!mv.variants.some(v=>v.id===mv.activeId)) mv.activeId = mv.variants[0].id;
+  });
+}
+function getActiveMacroVar(m,k){
+  ensureMacroVariants(m);
+  const mv = m.macroVariants[k];
+  return mv.variants.find(v=>v.id===mv.activeId) || mv.variants[0];
+}
+function syncActiveMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  const v = mv.variants.find(x=>x.id===mv.activeId);
+  if (!v) return;
+  v.items = (m.items?.[k]||[]).map(i=>({...i}));
+}
+function buildMacroVarUI(m, idx, k){
+  if (!state.ui?.enableMacroVariants) return '';
+  ensureMacroVariants(m);
+  const mv = m.macroVariants[k];
+  const opts = mv.variants.map(v=>`<option value="${v.id}" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
+  return `
+    <span class="muted">Variante</span>
+    <select data-role="macroVarSelect" data-meal="${idx}" data-k="${k}" style="width:auto; min-width:120px">${opts}</select>
+    <button class="secondary" data-role="macroVarNew" data-meal="${idx}" data-k="${k}" title="Nuova variante">+</button>
+    <button class="secondary" data-role="macroVarRen" data-meal="${idx}" data-k="${k}" title="Rinomina variante">R</button>
+    <button class="secondary danger" data-role="macroVarDel" data-meal="${idx}" data-k="${k}" title="Elimina variante">×</button>
+  `;
+}
+function switchMacroVar(mealIdx,k,varId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  syncActiveMacroVar(mealIdx,k);
+  if (!mv.variants.some(v=>v.id===varId)) return;
+  mv.activeId = varId;
+  const v = mv.variants.find(x=>x.id===varId);
+  m.items[k] = (v.items||[]).map(i=>({...i}));
+  syncActiveVariant(mealIdx);
+  save();
+  renderPlanner();
+}
+function newMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  syncActiveMacroVar(mealIdx,k);
+  const label = (k==='c'?'Carbo':'p'?'Proteine':'Grassi');
+  const name = prompt('Nome variante per ' + label + ':', 'Variante ' + (mv.variants.length+1));
+  if (!name) return;
+  const id = crypto.randomUUID();
+  mv.variants.push({id, name, items: (m.items[k]||[]).map(i=>({...i}))});
+  mv.activeId = id;
+  save();
+  renderPlanner();
+}
+function renameMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const v = getActiveMacroVar(m,k);
+  const name = prompt('Nuovo nome variante:', v.name);
+  if (!name) return;
+  v.name = name;
+  save();
+  renderPlanner();
+}
+function deleteMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  if (mv.variants.length<=1){ alert('Deve esistere almeno una variante.'); return; }
+  if (!confirm('Eliminare la variante attiva?')) return;
+  const idx = mv.variants.findIndex(v=>v.id===mv.activeId);
+  mv.variants.splice(idx,1);
+  mv.activeId = mv.variants[0].id;
+  const v = mv.variants[0];
+  m.items[k] = (v.items||[]).map(i=>({...i}));
+  syncActiveVariant(mealIdx);
+  save();
+  renderPlanner();
+}
 /* Render Planner */
 function renderPlanner(){
   const p = currentProfile();
@@ -1351,7 +1460,9 @@ function addFoodFromForm(){
   const name = els.fName.value.trim(); if(!name){ els.fName.focus(); return; }
   const kcal = parse(els.fKcal.value), c=parse(els.fCarb.value), p=parse(els.fProt.value), fat=parse(els.fFat.value);
   let id = els.addFoodBtn.dataset.editingId || crypto.randomUUID();
-  const group = dominant(c,p,fat);
+  const mode = (els.fGroupMode?.value || 'auto');
+ const groupLocked = (mode !== 'auto');
+ const group = groupLocked ? mode : dominant(c,p,fat);
   const exists = state.foods.find(x=>x.id===id);
   const entry = {id,name,kcal,c,p,fat,group};
   if (exists){ Object.assign(exists, entry); } else { state.foods.push(entry); }
@@ -1359,11 +1470,13 @@ function addFoodFromForm(){
 }
 function clearFoodForm(){
   ['fName','fKcal','fCarb','fProt','fFat'].forEach(id=>els[id].value='');
+ if (els.fGroupMode) els.fGroupMode.value='auto';
   els.addFoodBtn.textContent='Aggiungi/Salva'; delete els.addFoodBtn.dataset.editingId;
 }
 function editFood(id){
   const f = state.foods.find(x=>x.id===id); if (!f) return;
   els.fName.value = f.name; els.fKcal.value=f.kcal; els.fCarb.value=f.c; els.fProt.value=f.p; els.fFat.value=f.fat;
+ if (els.fGroupMode) els.fGroupMode.value = (f.groupLocked ? (f.group || 'auto') : 'auto');
   els.addFoodBtn.textContent='Salva'; els.addFoodBtn.dataset.editingId = f.id;
   updateFoodPreview();
 }
@@ -1382,7 +1495,9 @@ function importFoodsArray(arr){
       kcal: parse(nf.kcal), c: parse(nf.c), p: parse(nf.p), fat: parse(nf.fat)
       // eventuale nf.sug ignorato
     };
-    entry.group = dominant(entry.c,entry.p,entry.fat);
+    const importedGroup = (nf.group && ['c','p','f'].includes(nf.group)) ? nf.group : null;
+ entry.groupLocked = !!nf.groupLocked;
+ entry.group = (entry.groupLocked && importedGroup) ? importedGroup : dominant(entry.c,entry.p,entry.fat);
     if (exist) Object.assign(exist, entry); else state.foods.push(entry);
   });
   save(); renderFoods(); renderPlanner(); renderPreview();
@@ -1426,7 +1541,11 @@ function autoFillOne(mealIdx,k){
 /* ========= Eventi Planner ========= */
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
-  if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
+  if (t.dataset.role==='macroVarSelect') {
+  switchMacroVar(parseInt(t.dataset.meal), t.dataset.k, t.value);
+  return;
+ }
+ if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
   else if (t.dataset.role==='itemPct') {
  const mealIdx = parseInt(t.dataset.meal);
  const p = currentProfile(), m=p.meals[mealIdx];
@@ -1495,7 +1614,10 @@ els.mealsContainer.addEventListener('input', e=>{
 els.mealsContainer.addEventListener('click', e=>{
   const b = e.target.closest('button[data-role]'); if(!b) return;
   const role=b.dataset.role, mealIdx=parseInt(b.dataset.meal), k=b.dataset.k, food=b.dataset.food;
-  if (role==='autoFill') autoFillOne(mealIdx,k);
+  if (role==='macroVarNew') newMacroVar(mealIdx,k);
+ else if (role==='macroVarRen') renameMacroVar(mealIdx,k);
+ else if (role==='macroVarDel') deleteMacroVar(mealIdx,k);
+ else if (role==='autoFill') autoFillOne(mealIdx,k);
   else if (role==='delItem') removeItem(mealIdx,k,food);
   else if (role==='auto1'){
     const p = currentProfile(), m=p.meals[mealIdx];
@@ -1688,6 +1810,8 @@ function setProfileHandlers(){
           state.ui = data.ui;
           if (!state.ui.foodsCollapsed) state.ui.foodsCollapsed={c:false,p:false,f:false};
           if (typeof state.ui.snapManual5 !== 'boolean') state.ui.snapManual5=false;
+ if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods=false;
+ if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants=false;
           if (!state.ui.preview) state.ui.preview={showC:true,showP:true,showF:true,showTargets:true};
         }
         save(); initProfileUI(); renderFoods(); renderPreview();
@@ -1800,9 +1924,7 @@ function exportPDF(){
       .v4{background:#fff4e5;color:#b45309;border-color:#bcd}
       .v5{background:#e6fffb;color:#0f766e;border-color:#bcd}
       .varbox{border:1px dashed #ccc;border-radius:10px;padding:8px;margin:6px 0}
-    
-#page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
-</style>`;
+    </style>`;
   let html = `<h2>Piano pasti - ${p.name}</h2>`;
 
   p.meals.forEach((m,mi)=>{
@@ -1864,6 +1986,8 @@ function initProfileUI(){
   // Sync UI toggles
   if (els.toggleHints) els.toggleHints.checked = !!state.ui.showHints;
   if (els.snapManual5) els.snapManual5.checked = !!state.ui.snapManual5;
+ if (els.toggleAllFoods) els.toggleAllFoods.checked = !!state.ui.showAllFoods;
+ if (els.toggleMacroVariants) els.toggleMacroVariants.checked = !!state.ui.enableMacroVariants;
   if (els.showColC) els.showColC.checked = !!state.ui.preview.showC;
   if (els.showColP) els.showColP.checked = !!state.ui.preview.showP;
   if (els.showColF) els.showColF.checked = !!state.ui.preview.showF;
