@@ -52,22 +52,29 @@
     .hintbar{margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
       background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(167,139,250,.12));color:#e2e8f0;font-size:13px}
 
-    .list{display:grid;gap:8px;max-height:calc(100vh - 280px);overflow:auto;border:1px solid var(--brd);padding:8px;border-radius:12px;background:rgba(2,6,23,.3)}
+    .split{display:grid;gap:10px;grid-template-columns:1.05fr .95fr;align-items:start;margin-top:10px}
+
+    .list{display:grid;gap:8px;max-height:calc(100vh - 320px);overflow:auto;border:1px solid var(--brd);padding:8px;border-radius:12px;background:rgba(2,6,23,.3)}
     .item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;border:1px solid var(--brd);border-radius:12px;background:rgba(11,18,32,.6)}
     .item .meta{color:var(--muted);font-size:12px}
     .chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--brd)}
     .chip.tag{background:rgba(14,165,233,.12);color:#93c5fd;border-color:rgba(147,197,253,.35)}
     .chip.fav{background:rgba(245,158,11,.12);color:#fcd34d;border-color:rgba(245,158,11,.35)}
 
+    .preview{border:1px solid var(--brd);border-radius:12px;background:rgba(2,6,23,.35);padding:10px;max-height:calc(100vh - 320px);overflow:auto}
+    .preview h4{margin:0 0 4px;font-size:18px}
+    .preview .sub{color:var(--muted);font-size:13px}
+    .preview h5{margin:12px 0 6px;font-size:13px;color:#dbeafe}
+    .preview ul,.preview ol{margin:0;padding-left:18px}
+    .preview li{margin:4px 0}
+    .kv{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
     @media (max-width:980px){
       .two,.three{grid-template-columns:1fr}
+      .split{grid-template-columns:1fr}
       .tabs{position:sticky;top:0;z-index:5;background:rgba(11,18,32,.9);backdrop-filter:blur(6px)}
-      .list{max-height:50vh}
+      .list,.preview{max-height:45vh}
     }
-
-    /* Login solo in Home */
-    #page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn,
-    #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important;}
   </style>
 </head>
 <body>
@@ -77,7 +84,7 @@
   <div class="headerbar">
     <div>
       <h1>Ricette</h1>
-      <p>Archivio ricette personali • Categorie • Tag • Import/Export • Sync</p>
+      <p>Apri una ricetta per vederla in sola lettura • Modifica solo quando serve</p>
     </div>
     <div class="header-status">
       <span id="authBadge" class="badge neu">—</span>
@@ -86,7 +93,7 @@
   </div>
 </header>
 
-<nav class="tabs noprint">
+<nav class="tabs">
   <button class="tab-btn" data-home="1" title="Torna alla Home">Home</button>
   <button class="tab-btn active" data-tab="page-recipes">Ricette</button>
   <button class="tab-btn" data-tab="page-editor">Editor</button>
@@ -97,7 +104,7 @@
 <section id="page-recipes" class="page active">
   <div class="panel">
     <div class="sec">
-      <h3>Elenco ricette</h3>
+      <h3>Elenco</h3>
       <div class="row two">
         <input id="q" placeholder="Cerca per nome, categoria, tag, ingredienti…" />
         <div class="inline right">
@@ -108,16 +115,22 @@
       </div>
       <div class="inline" style="margin-top:8px">
         <label class="inline"><input type="checkbox" id="onlyFav"/> <span>Solo preferite</span></label>
-        <select id="catFilter" style="min-width:220px">
-          <option value="">Categoria: (tutte)</option>
-        </select>
-        <select id="tagFilter" style="min-width:220px">
-          <option value="">Filtro tag: (tutti)</option>
-        </select>
+        <select id="catFilter" style="min-width:220px"><option value="">Categoria: (tutte)</option></select>
+        <select id="tagFilter" style="min-width:220px"><option value="">Filtro tag: (tutti)</option></select>
         <span class="badge" id="countBadge">0</span>
       </div>
-      <div id="list" class="list" style="margin-top:10px"></div>
-      <div class="hintbar" id="hint">Suggerimento: aggiungi una <b>categoria</b> (es. Colazione/Pranzo) e dei tag (es. “bulk”, “veg”).</div>
+
+      <div class="split">
+        <div>
+          <div id="list" class="list"></div>
+        </div>
+        <div>
+          <div class="preview" id="preview">
+            <div class="hintbar">Seleziona una ricetta dalla lista per vederla qui (sola lettura).</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -135,30 +148,16 @@
       </div>
       <div class="row three" style="margin-top:8px">
         <input id="rTime" placeholder="Tempo (es. 20 min)" />
-        <input id="rServ" type="number" min="1" step="1" placeholder="Porzioni" />
-        <select id="rCat" title="Categoria">
-          <option value="">Categoria: (nessuna)</option>
-        </select>
-      </div>
-      <div class="row three" style="margin-top:8px">
-        <input id="rKcal" type="number" min="0" step="1" placeholder="Kcal (opzionale)" />
-        <input id="rProt" type="number" min="0" step="0.1" placeholder="Proteine g (opz.)" />
-        <input id="rCarb" type="number" min="0" step="0.1" placeholder="Carbo g (opz.)" />
-      </div>
-      <div class="row three" style="margin-top:8px">
-        <input id="rFat" type="number" min="0" step="0.1" placeholder="Grassi g (opz.)" />
-        <div class="inline" style="align-items:center">
-          <span class="badge" id="macroHint">Macro: —</span>
-        </div>
-        <div></div>
+        <input id="rTemp" placeholder="Temperatura (es. 180°C)" />
+        <select id="rCat"><option value="">Categoria: (nessuna)</option></select>
       </div>
 
       <div class="row" style="margin-top:8px">
         <input id="rTags" placeholder="Tag (separati da virgola) es: pranzo, bulk, veloce" />
       </div>
       <div class="row two" style="margin-top:8px">
-        <textarea id="rIngr" placeholder="Ingredienti (uno per riga)\n- 200g pollo\n- 80g riso\n- 10g olio"></textarea>
-        <textarea id="rSteps" placeholder="Procedura / passaggi (uno per riga)\n1) ...\n2) ..."></textarea>
+        <textarea id="rIngr" placeholder="Ingredienti (uno per riga)"></textarea>
+        <textarea id="rSteps" placeholder="Procedura / passaggi (uno per riga)"></textarea>
       </div>
       <div class="row" style="margin-top:8px">
         <textarea id="rNotes" placeholder="Note (varianti, sostituzioni, link, ecc.)"></textarea>
@@ -181,7 +180,7 @@
         <button class="secondary" id="importBtn">Importa JSON</button>
         <input type="file" id="importFile" accept="application/json" style="display:none" />
       </div>
-      <div class="hintbar">Formato export: lista di ricette. L’import unisce per id (se presente) o per titolo.</div>
+      <div class="hintbar">L’export include categoria e temperatura di cottura (se compilata).</div>
     </div>
   </div>
 </section>
@@ -190,17 +189,15 @@
   <div class="panel">
     <div class="sec">
       <h3>Account & Sync</h3>
-      <div class="hintbar">Login/Logout disponibili solo nella <b>Home</b>. Qui vedi lo stato di sincronizzazione e i dettagli.</div>
+      <div class="hintbar">Login/Logout disponibili solo nella <b>Home</b>. Qui vedi lo stato di sincronizzazione.</div>
       <div id="syncDetails" class="muted" style="margin-top:6px"></div>
       <div class="inline right" style="margin-top:8px">
-        <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
+        <button class="secondary" id="forceSyncBtn">Forza sync</button>
       </div>
     </div>
     <div class="sec">
       <h3>Categorie</h3>
-      <div class="row">
-        <input id="catsInput" placeholder="Categorie (separate da virgola) es: Colazione, Pranzo, Cena, Snack, Dolci" />
-      </div>
+      <div class="row"><input id="catsInput" placeholder="Categorie separate da virgola (es. Colazione, Pranzo, Cena)"/></div>
       <div class="muted" style="margin-top:6px">Le categorie servono per filtrare e classificare le ricette.</div>
     </div>
     <div class="sec">
@@ -214,22 +211,10 @@
 </section>
 
 <script type="module">
-  // ===== Firebase (Auth + Firestore) =====
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import {
-    getAuth,
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-  import {
-    getFirestore,
-    doc,
-    setDoc,
-    getDoc,
-    onSnapshot,
-    enableIndexedDbPersistence
-  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-  // stesso progetto Firebase della Dieta
   const firebaseConfig = {
     apiKey: "AIzaSyDf5y-wlgT4gylL4d_cMQe_ik8s_S09VRc",
     authDomain: "programma-dieta-952d7.firebaseapp.com",
@@ -245,15 +230,13 @@
   const db = getFirestore(app);
   enableIndexedDbPersistence(db).catch(()=>{});
 
-  // ===== Utils =====
   const $ = (sel)=>document.querySelector(sel);
   const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
   const now = ()=>Date.now();
   const norm = (s)=>String(s||'').toLowerCase().trim();
   const uniq = (arr)=>Array.from(new Set(arr));
 
-  // ===== State & Storage =====
-  const KEY = 'recipes-app-v2';
+  const KEY = 'recipes-app-v3';
   function seed(){
     return {
       _meta:{ updatedAt: 0 },
@@ -266,6 +249,28 @@
   }
   let state = load() || seed();
 
+  // migrazione soft (vecchi dati senza category/temp)
+  function normalizeState(){
+    state = state || seed();
+    state.recipes = Array.isArray(state.recipes) ? state.recipes : [];
+    state.ui = state.ui || seed().ui;
+    if (!Array.isArray(state.ui.categories)) state.ui.categories = seed().ui.categories;
+    state.recipes.forEach(r=>{
+      if (!r.id) r.id = crypto.randomUUID();
+      if (!('category' in r)) r.category = '';
+      if (!('temp' in r)) r.temp = '';
+      if (!Array.isArray(r.tags)) r.tags = [];
+      if (!Array.isArray(r.ingredients)) r.ingredients = [];
+      if (!Array.isArray(r.steps)) r.steps = [];
+      if (!('notes' in r)) r.notes = '';
+      if (!('time' in r)) r.time = '';
+      if (!('fav' in r)) r.fav = false;
+      if (!('updatedAt' in r)) r.updatedAt = 0;
+      // rimuovi eventuali campi legacy senza distruggere (non necessario)
+    });
+  }
+  normalizeState();
+
   function saveLocal(){
     state._meta = state._meta || {};
     state._meta.updatedAt = now();
@@ -273,7 +278,7 @@
     scheduleRemoteSave();
   }
 
-  // ===== Sync (users/{uid}/apps/recipes) =====
+  // ===== Sync =====
   const remote = { uid:null, unsub:null, applying:false, timer:null };
   let lastSyncAt = 0;
 
@@ -293,7 +298,7 @@
     const last = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : '—';
     setBadges({
       auth: remote.uid ? 'ok':'neu',
-      authText: remote.uid ? ('Loggato') : ('Non loggato'),
+      authText: remote.uid ? 'Loggato' : 'Non loggato',
       sync: type || 'neu',
       syncText: 'Sync: ' + (msg||'—'),
       details: lastSyncAt ? ('Ultima sync: ' + last) : ''
@@ -313,7 +318,6 @@
       $('#syncDetails').textContent = e?.message || String(e);
     }
   }
-
   function scheduleRemoteSave(){
     if (!remote.uid || remote.applying) return;
     clearTimeout(remote.timer);
@@ -328,15 +332,13 @@
       setSyncState('warn','Risincronizzo…');
       const snap = await getDoc(ref);
       const localTs = state?._meta?.updatedAt || 0;
-      if (!snap.exists()){
-        await pushToCloud();
-        return;
-      }
+      if (!snap.exists()) { await pushToCloud(); return; }
       const cloudState = snap.data().state;
       const cloudTs = cloudState?._meta?.updatedAt || 0;
       if (cloudTs > localTs){
         remote.applying = true;
         state = cloudState;
+        normalizeState();
         localStorage.setItem(KEY, JSON.stringify(state));
         remote.applying = false;
         lastSyncAt = now();
@@ -367,6 +369,7 @@
       if (cloudTs > localTs){
         remote.applying = true;
         state = cloudState;
+        normalizeState();
         localStorage.setItem(KEY, JSON.stringify(state));
         remote.applying = false;
         lastSyncAt = now();
@@ -389,6 +392,7 @@
       if (cloudTs > localTs2){
         remote.applying = true;
         state = cloudState;
+        normalizeState();
         localStorage.setItem(KEY, JSON.stringify(state));
         remote.applying = false;
         lastSyncAt = now();
@@ -408,13 +412,12 @@
     $$('.page').forEach(p=>p.classList.toggle('active', p.id===id));
     tabButtons.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
     localStorage.setItem('recipes-tab', id);
+    if (id==='page-editor') fillEditor(current());
   }
   tabButtons.forEach(b=>b.addEventListener('click', ()=>{
     if (b.dataset.home==='1'){ window.location.href = '../'; return; }
     setTab(b.dataset.tab);
   }));
-  const lastTab = localStorage.getItem('recipes-tab');
-  if (lastTab) setTab(lastTab);
 
   // ===== Model =====
   function makeRecipe(title='Nuova ricetta'){
@@ -424,9 +427,7 @@
       fav:false,
       category:'',
       time:'',
-      servings:1,
-      kcal:null,
-      macros:{ c:null, p:null, f:null },
+      temp:'',
       tags:[],
       ingredients:[],
       steps:[],
@@ -440,24 +441,10 @@
     return state.recipes.find(r=>r.id===selectedId) || null;
   }
 
-  function updateMacroHint(){
-    const p = $('#rProt')?.value, c = $('#rCarb')?.value, f = $('#rFat')?.value;
-    const pp = p===''? null : parseFloat(p);
-    const cc = c===''? null : parseFloat(c);
-    const ff = f===''? null : parseFloat(f);
-    const hint = $('#macroHint');
-    if (!hint) return;
-    const parts = [];
-    if (cc!=null) parts.push('C ' + cc);
-    if (pp!=null) parts.push('P ' + pp);
-    if (ff!=null) parts.push('G ' + ff);
-    hint.textContent = parts.length ? ('Macro: ' + parts.join(' • ') + ' g') : 'Macro: —';
-  }
-
   // ===== Filters =====
   function recipeMatches(r, q){
     if (!q) return true;
-    const blob = [r.title, r.category, (r.tags||[]).join(' '), (r.ingredients||[]).join(' '), (r.steps||[]).join(' '), r.notes].join(' ');
+    const blob = [r.title, r.category, r.temp, (r.tags||[]).join(' '), (r.ingredients||[]).join(' '), (r.steps||[]).join(' '), r.notes].join(' ');
     return norm(blob).includes(norm(q));
   }
 
@@ -470,13 +457,56 @@
   }
 
   function renderCatFilter(){
-    state.ui = state.ui || {};
     const cats = Array.isArray(state.ui.categories) ? state.ui.categories : [];
     const sel = $('#catFilter');
-    if (!sel) return;
     const cur = sel.value;
     sel.innerHTML = '<option value="">Categoria: (tutte)</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
     if (cats.includes(cur)) sel.value = cur;
+  }
+
+  // ===== Read-only preview =====
+  function renderPreview(){
+    const r = current();
+    const host = $('#preview');
+    if (!host) return;
+    if (!r){
+      host.innerHTML = '<div class="hintbar">Seleziona una ricetta dalla lista per vederla qui (sola lettura).</div>';
+      return;
+    }
+    const meta = [
+      r.time && `⏱ ${escapeHtml(r.time)}`,
+      r.temp && `🌡 ${escapeHtml(r.temp)}`
+    ].filter(Boolean).join(' • ');
+    const tags = (r.tags||[]).map(t=>`<span class="chip tag">${escapeHtml(t)}</span>`).join(' ');
+    const cat = r.category ? `<span class="chip tag">${escapeHtml(r.category)}</span>` : '';
+
+    const ingr = (r.ingredients||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('') || '<li class="sub">—</li>';
+    const steps = (r.steps||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('') || '<li class="sub">—</li>';
+
+    host.innerHTML = `
+      <div class="inline" style="justify-content:space-between">
+        <div>
+          <h4>${escapeHtml(r.title)}</h4>
+          <div class="sub">${meta || '—'}</div>
+          <div class="kv">${r.fav?'<span class="chip fav">★ Preferita</span>':''} ${cat} ${tags}</div>
+        </div>
+        <div class="inline right">
+          <button class="btn" id="editFromPreview">Modifica</button>
+        </div>
+      </div>
+      <h5>Ingredienti</h5>
+      <ul>${ingr}</ul>
+      <h5>Procedura</h5>
+      <ol>${steps}</ol>
+      <h5>Note</h5>
+      <div class="sub" style="white-space:pre-wrap">${escapeHtml(r.notes||'—')}</div>
+    `;
+
+    $('#editFromPreview')?.addEventListener('click', ()=> setTab('page-editor'));
+  }
+
+  function escapeHtml(s){
+    return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
   }
 
   // ===== List =====
@@ -499,15 +529,15 @@
     list.innerHTML = arr.map(r=>{
       const chips = [
         r.fav ? '<span class="chip fav">★</span>' : '',
-        r.category ? `<span class="chip tag">${r.category}</span>` : '',
-        ...(r.tags||[]).slice(0,4).map(t=>`<span class="chip tag">${t}</span>`)
+        r.category ? `<span class="chip tag">${escapeHtml(r.category)}</span>` : '',
+        ...(r.tags||[]).slice(0,4).map(t=>`<span class="chip tag">${escapeHtml(t)}</span>`)
       ].join(' ');
-      const meta = [r.time && `⏱ ${r.time}`, r.servings && `🍽 ${r.servings}`, (r.kcal!=null && r.kcal!=='') && `🔥 ${r.kcal} kcal`].filter(Boolean).join(' • ');
+      const meta = [r.time && `⏱ ${escapeHtml(r.time)}`, r.temp && `🌡 ${escapeHtml(r.temp)}`].filter(Boolean).join(' • ');
       const active = r.id===selectedId ? 'style="outline:2px solid rgba(34,211,238,.55)"' : '';
       return `
         <div class="item" data-id="${r.id}" ${active}>
           <div>
-            <div style="font-weight:800">${r.title}</div>
+            <div style="font-weight:800">${escapeHtml(r.title)}</div>
             <div class="meta">${meta || '—'}</div>
             <div class="inline" style="margin-top:6px">${chips}</div>
           </div>
@@ -516,19 +546,22 @@
           </div>
         </div>
       `;
-    }).join('') || '<div class="muted" style="padding:8px">Nessuna ricetta trovata.</div>';
+    }).join('') || '<div class="sub" style="padding:8px">Nessuna ricetta trovata.</div>';
 
     list.querySelectorAll('.item').forEach(el=>{
-      el.addEventListener('click', ()=>selectRecipe(el.dataset.id));
-      el.querySelector('[data-act="open"]').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        selectRecipe(el.dataset.id);
-        setTab('page-editor');
-      });
+      const id = el.dataset.id;
+      el.addEventListener('click', ()=> selectRecipe(id));
+      el.querySelector('[data-act="open"]').addEventListener('click', (e)=>{ e.stopPropagation(); selectRecipe(id); });
     });
 
     renderCatFilter();
     renderTagFilter();
+  }
+
+  function selectRecipe(id){
+    selectedId = id;
+    renderList();
+    renderPreview();
   }
 
   // ===== Editor =====
@@ -537,19 +570,12 @@
     $('#rTitle').value = r?.title || '';
     $('#rFav').checked = !!r?.fav;
     $('#rTime').value = r?.time || '';
-    $('#rServ').value = r?.servings || 1;
+    $('#rTemp').value = r?.temp || '';
 
-    // categorie
     const cats = state.ui?.categories || [];
     const catSel = $('#rCat');
     catSel.innerHTML = '<option value="">Categoria: (nessuna)</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
     catSel.value = r?.category || '';
-
-    $('#rKcal').value = (r?.kcal ?? '') === null ? '' : (r?.kcal ?? '');
-    $('#rProt').value = (r?.macros?.p ?? '') === null ? '' : (r?.macros?.p ?? '');
-    $('#rCarb').value = (r?.macros?.c ?? '') === null ? '' : (r?.macros?.c ?? '');
-    $('#rFat').value = (r?.macros?.f ?? '') === null ? '' : (r?.macros?.f ?? '');
-    updateMacroHint();
 
     $('#rTags').value = (r?.tags||[]).join(', ');
     $('#rIngr').value = (r?.ingredients||[]).join('\n');
@@ -557,17 +583,12 @@
     $('#rNotes').value = r?.notes || '';
   }
 
-  function selectRecipe(id){
-    selectedId = id;
-    fillEditor(current());
-    renderList();
-  }
-
   function resetEditor(){
     selectedId = null;
     fillEditor(null);
     $('#saveHint').style.display='none';
     renderList();
+    renderPreview();
   }
 
   function readEditor(){
@@ -576,26 +597,14 @@
     const fav = $('#rFav').checked;
     const category = ($('#rCat').value || '').trim();
     const time = $('#rTime').value.trim();
-    const servings = Math.max(1, parseInt($('#rServ').value||'1')||1);
-
-    const kcalRaw = $('#rKcal').value;
-    const kcal = kcalRaw==='' ? null : Math.max(0, parseInt(kcalRaw)||0);
-
-    const pRaw = $('#rProt').value;
-    const cRaw = $('#rCarb').value;
-    const fRaw = $('#rFat').value;
-    const macros = {
-      p: pRaw==='' ? null : Math.max(0, parseFloat(pRaw)||0),
-      c: cRaw==='' ? null : Math.max(0, parseFloat(cRaw)||0),
-      f: fRaw==='' ? null : Math.max(0, parseFloat(fRaw)||0)
-    };
+    const temp = $('#rTemp').value.trim();
 
     const tags = uniq($('#rTags').value.split(',').map(t=>t.trim()).filter(Boolean));
     const ingredients = $('#rIngr').value.split('\n').map(x=>x.trim()).filter(Boolean);
     const steps = $('#rSteps').value.split('\n').map(x=>x.trim()).filter(Boolean);
     const notes = $('#rNotes').value;
 
-    return { id, title, fav, category, time, servings, kcal, macros, tags, ingredients, steps, notes, updatedAt: now() };
+    return { id, title, fav, category, time, temp, tags, ingredients, steps, notes, updatedAt: now() };
   }
 
   function saveEditor(){
@@ -621,7 +630,6 @@
     selectedId = copy.id;
     saveLocal();
     renderAll();
-    setTab('page-editor');
   }
 
   function deleteSelected(){
@@ -657,13 +665,7 @@
         fav: !!(x.fav ?? r?.fav),
         category: String(x.category ?? r?.category ?? ''),
         time: String(x.time ?? r?.time ?? ''),
-        servings: Math.max(1, parseInt(x.servings ?? r?.servings ?? 1)||1),
-        kcal: (x.kcal===null || x.kcal===undefined) ? (r?.kcal ?? null) : (parseInt(x.kcal)||0),
-        macros: {
-          c: (x.macros?.c ?? r?.macros?.c ?? null),
-          p: (x.macros?.p ?? r?.macros?.p ?? null),
-          f: (x.macros?.f ?? r?.macros?.f ?? null)
-        },
+        temp: String(x.temp ?? r?.temp ?? ''),
         tags: uniq((x.tags || r?.tags || []).map(t=>String(t).trim()).filter(Boolean)),
         ingredients: (x.ingredients || r?.ingredients || []).map(s=>String(s).trim()).filter(Boolean),
         steps: (x.steps || r?.steps || []).map(s=>String(s).trim()).filter(Boolean),
@@ -679,19 +681,21 @@
 
   // ===== Preferenze =====
   function renderPrefs(){
-    state.ui = state.ui || {compact:false, autosave:true, categories:['Colazione','Pranzo','Cena','Snack','Dolci']};
+    state.ui = state.ui || seed().ui;
     $('#uiCompact').checked = !!state.ui.compact;
     $('#uiAutoSave').checked = state.ui.autosave !== false;
 
-    const cats = Array.isArray(state.ui.categories) ? state.ui.categories : ['Colazione','Pranzo','Cena','Snack','Dolci'];
+    const cats = Array.isArray(state.ui.categories) ? state.ui.categories : seed().ui.categories;
     state.ui.categories = cats;
     $('#catsInput').value = cats.join(', ');
+    // aggiungi eventuali categorie usate ma non in lista
+    state.recipes.forEach(r=>{ if (r.category && !state.ui.categories.includes(r.category)) state.ui.categories.push(r.category); });
     renderCatFilter();
 
     document.body.classList.toggle('compact', !!state.ui.compact);
   }
 
-  // ===== Events =====
+  // ===== Event wiring =====
   $('#q').addEventListener('input', renderList);
   $('#onlyFav').addEventListener('change', renderList);
   $('#catFilter').addEventListener('change', renderList);
@@ -711,14 +715,12 @@
   $('#resetBtn').addEventListener('click', resetEditor);
   $('#saveBtn').addEventListener('click', saveEditor);
 
-  // Autosave
-  const autos = ['rTitle','rFav','rTime','rServ','rCat','rKcal','rProt','rCarb','rFat','rTags','rIngr','rSteps','rNotes'];
+  const autos = ['rTitle','rFav','rTime','rTemp','rCat','rTags','rIngr','rSteps','rNotes'];
   autos.forEach(id=>{
     const el = document.getElementById(id);
     if (!el) return;
     const evt = (el.tagName==='INPUT' && el.type==='checkbox') ? 'change' : 'input';
     el.addEventListener(evt, ()=>{
-      updateMacroHint();
       if (!($('#uiAutoSave').checked)) return;
       if (!selectedId && !$('#rTitle').value.trim()) return;
       debounceSave();
@@ -728,23 +730,13 @@
   let saveDeb=null;
   function debounceSave(){
     clearTimeout(saveDeb);
-    saveDeb = setTimeout(()=>{
-      if (!selectedId && $('#rTitle').value.trim()){
-        const r = makeRecipe($('#rTitle').value.trim());
-        state.recipes.push(r);
-        selectedId = r.id;
-      }
-      if (selectedId) saveEditor();
-    }, 500);
+    saveDeb = setTimeout(()=>{ if (selectedId) saveEditor(); }, 500);
   }
 
   $('#catsInput').addEventListener('change', ()=>{
-    const raw = $('#catsInput').value;
-    state.ui.categories = raw.split(',').map(x=>x.trim()).filter(Boolean);
+    state.ui.categories = $('#catsInput').value.split(',').map(x=>x.trim()).filter(Boolean);
     saveLocal();
-    renderCatFilter();
-    const r = current();
-    if (r) fillEditor(r);
+    renderAll();
   });
 
   $('#exportBtn').addEventListener('click', exportJSON);
@@ -754,28 +746,24 @@
     if (!f) return;
     const r = new FileReader();
     r.onload = (ev)=>{
-      try{
-        importArray(JSON.parse(ev.target.result));
-      }catch(err){
-        alert('Import fallito: ' + err.message);
-      }
+      try{ importArray(JSON.parse(ev.target.result)); }
+      catch(err){ alert('Import fallito: ' + err.message); }
     };
     r.readAsText(f,'utf-8');
     e.target.value='';
   });
 
   $('#forceSyncBtn').addEventListener('click', forceResync);
-  $('#uiCompact').addEventListener('change', ()=>{ state.ui.compact = !!$('#uiCompact').checked; saveLocal(); renderPrefs(); });
+  $('#uiCompact').addEventListener('change', ()=>{ state.ui.compact = !!$('#uiCompact').checked; saveLocal(); renderPrefs(); renderList(); });
   $('#uiAutoSave').addEventListener('change', ()=>{ state.ui.autosave = !!$('#uiAutoSave').checked; saveLocal(); });
 
   function renderAll(){
     renderPrefs();
     renderList();
-    const r = current();
-    if (r) fillEditor(r);
+    renderPreview();
   }
 
-  // ===== Auth state =====
+  // ===== Auth =====
   onAuthStateChanged(auth, async (user)=>{
     if (user){
       setBadges({auth:'ok', authText:'Loggato', sync:'warn', syncText:'Sync: Connessione…'});
@@ -790,9 +778,6 @@
   });
 
   // Init
-  state = state || seed();
-  state.recipes = Array.isArray(state.recipes) ? state.recipes : [];
-  state.ui = state.ui || seed().ui;
   renderAll();
 
 </script>
