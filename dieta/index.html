@@ -146,13 +146,19 @@
 
 #page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
 
-/* === PATCH: checkbox allineati + inline editor === */
+/* === PATCH: checkbox allineati + inline editor + varianti macro === */
 label.inline{display:flex;align-items:center;gap:8px}
 label.inline input[type="checkbox"]{width:auto;min-width:auto;padding:0;margin:0;accent-color:var(--pri)}
 .food-inline-editor{margin-top:8px;padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(11,18,32,.6)}
 .food-inline-editor .row{display:grid;gap:8px}
 .food-inline-editor .row.three{grid-template-columns:repeat(3,1fr)}
 .food-inline-editor .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.macro-variant-box{border:1px dashed rgba(255,255,255,.15);border-radius:10px;padding:8px;margin-top:8px;background:rgba(2,6,23,.25)}
+.macro-variant-box .mv-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 6px 0}
+.macro-variant-box .mv-title .name{font-weight:700}
+.macro-variant-box.inactive{opacity:.78}
+.macro-variant-box .mv-items{display:grid;gap:8px}
+.macro-variant-box .mv-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;justify-content:flex-end}
 
 </style>
 </head>
@@ -1905,7 +1911,7 @@ BOOTING = false;
 // =========================
 // PATCH FUNZIONALE (2026-01-29)
 // - Vista "Tutti" (toggleAllFoods) in Planner
-// - Varianti per macro (toggleMacroVariants) in Planner
+// - Varianti per macro: visibili tutte + MODIFICABILI + export/anteprima
 // - Gruppo alimento manuale (fGroupMode + groupLocked)
 // - Modifica alimento inline nell'elenco + autoclose
 // =========================
@@ -1955,7 +1961,6 @@ function ensurePatchedUI(){
       <option value="p">Gruppo: Proteine (P)</option>
       <option value="f">Gruppo: Grassi (G)</option>
     `;
-    // inserisci dopo fFat
     fFat.insertAdjacentElement('afterend', sel);
   }
 }
@@ -2004,7 +2009,6 @@ function patchedAddFoodFromForm(){
   const entry = {id,name,kcal,c,p,fat,group,groupLocked};
   if (exists) Object.assign(exists, entry); else state.foods.push(entry);
 
-  // reset form
   ['fName','fKcal','fCarb','fProt','fFat'].forEach(i=>{ const el=document.getElementById(i); if(el) el.value=''; });
   const gm = document.getElementById('fGroupMode'); if (gm) gm.value='auto';
   if (btn){ btn.textContent='Aggiungi/Salva'; delete btn.dataset.editingId; }
@@ -2021,7 +2025,6 @@ function closeAllInlineEditors(){
 
 function toggleInlineFoodEditor(id, anchorEl){
   if (!anchorEl) return;
-  // chiudi se già aperto subito dopo
   const next = anchorEl.nextElementSibling;
   if (next && next.classList.contains('food-inline-editor')){ next.remove(); return; }
   closeAllInlineEditors();
@@ -2070,12 +2073,11 @@ function toggleInlineFoodEditor(id, anchorEl){
 
     Object.assign(f, {name,kcal,c,p,fat,group,groupLocked});
     save();
-    // autoclose: editor sparisce perché renderFoods ricrea la lista
     renderFoods();
   });
 }
 
-// Intercetta click su Modifica nella lista (in CAPTURE per bloccare handler vecchio)
+// Intercetta click su Modifica nella lista (CAPTURE)
 els.foodsGroups?.addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-act="edit"]');
   if (!btn) return;
@@ -2086,7 +2088,7 @@ els.foodsGroups?.addEventListener('click', (e)=>{
   toggleInlineFoodEditor(id, item);
 }, true);
 
-// Intercetta click su Aggiungi/Salva alimento (in CAPTURE)
+// Intercetta click su Aggiungi/Salva alimento (CAPTURE)
 const addBtn = document.getElementById('addFoodBtn');
 addBtn?.addEventListener('click', (e)=>{
   e.preventDefault();
@@ -2094,39 +2096,58 @@ addBtn?.addEventListener('click', (e)=>{
   patchedAddFoodFromForm();
 }, true);
 
-// Aggancia update preview anche a fGroupMode
 ['fCarb','fProt','fFat','fKcal','fGroupMode'].forEach(id=>{
   document.getElementById(id)?.addEventListener('input', patchedUpdateFoodPreview);
 });
 
-// ---------- Varianti macro nel Planner ----------
-function ensureMacroVariants(m){
-  if (!m.macroVariants) m.macroVariants = {c:null,p:null,f:null};
+// ---------- Varianti macro: persistenti per ogni "Tipo pasto" ----------
+function macroStore(m){
+  m._macroByMealVar = m._macroByMealVar || {};
+  return m._macroByMealVar;
+}
+
+function ensureMacroVariantsForMealVar(m, mealVarId){
+  const store = macroStore(m);
+  if (!store[mealVarId]) store[mealVarId] = {c:null,p:null,f:null};
+  const ms = store[mealVarId];
   ['c','p','f'].forEach(k=>{
-    let mv = m.macroVariants[k];
+    let mv = ms[k];
     if (!mv || !Array.isArray(mv.variants) || mv.variants.length===0){
       const id = crypto.randomUUID();
-      mv = { activeId: id, variants: [{ id, name: 'Base', items: (m.items?.[k]||[]).map(i=>({...i})) }] };
-      m.macroVariants[k] = mv;
+      const baseItems = (m.variants?.find(v=>v.id===mealVarId)?.items?.[k] || m.items?.[k] || []).map(i=>({...i}));
+      mv = { activeId: id, variants: [{ id, name: 'Base', items: baseItems }] };
+      ms[k] = mv;
     }
     if (!mv.activeId) mv.activeId = mv.variants[0].id;
     if (!mv.variants.some(v=>v.id===mv.activeId)) mv.activeId = mv.variants[0].id;
   });
+  return ms;
 }
 
 function syncActiveMacroVar(mealIdx,k){
   const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
+  const mealVarId = m.activeVarId;
+  const ms = ensureMacroVariantsForMealVar(m, mealVarId);
+  const mv = ms[k];
   const v = mv.variants.find(x=>x.id===mv.activeId);
   if (!v) return;
   v.items = (m.items?.[k]||[]).map(i=>({...i}));
 }
 
+function buildFoodOptionsForGroup(k){
+  const listFoods = (state.ui?.showAllFoods) ? state.foods.slice() : state.foods.filter(x=>x.group===k);
+  return listFoods
+    .sort((a,b)=>a.name.localeCompare(b.name))
+    .map(f=>{
+      const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
+      return `<option value="${f.id}">${f.name}${badge}</option>`;
+    }).join('');
+}
+
 function buildMacroVarUI(m, mealIdx, k){
   if (!state.ui?.enableMacroVariants) return '';
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
   const opts = mv.variants.map(v=>`<option value="${v.id}" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
   return `
     <span class="muted">Variante</span>
@@ -2139,37 +2160,35 @@ function buildMacroVarUI(m, mealIdx, k){
 
 function switchMacroVar(mealIdx,k,varId){
   const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
   syncActiveMacroVar(mealIdx,k);
-  const mv=m.macroVariants[k];
+  const mv=ms[k];
   if (!mv.variants.some(v=>v.id===varId)) return;
   mv.activeId = varId;
   const v = mv.variants.find(x=>x.id===varId);
   m.items[k] = (v.items||[]).map(i=>({...i}));
-  // mantiene coerenza con variante pasto attiva
-  _syncActiveVariant(mealIdx);
   save();
   renderPlanner();
 }
 
 function newMacroVar(mealIdx,k){
   const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
   syncActiveMacroVar(mealIdx,k);
   const label = (k==='c'?'Carbo':'p'?'Proteine':'Grassi');
-  const name = prompt('Nome variante per ' + label + ':', 'Variante ' + (m.macroVariants[k].variants.length+1));
+  const name = prompt('Nome variante per ' + label + ':', 'Variante ' + (ms[k].variants.length+1));
   if (!name) return;
   const id = crypto.randomUUID();
-  m.macroVariants[k].variants.push({id, name, items:(m.items[k]||[]).map(i=>({...i}))});
-  m.macroVariants[k].activeId = id;
+  ms[k].variants.push({id, name, items:(m.items[k]||[]).map(i=>({...i}))});
+  ms[k].activeId = id;
   save();
   renderPlanner();
 }
 
 function renameMacroVar(mealIdx,k){
   const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv=ms[k];
   const v = mv.variants.find(x=>x.id===mv.activeId) || mv.variants[0];
   const name = prompt('Nuovo nome variante:', v.name);
   if (!name) return;
@@ -2180,43 +2199,122 @@ function renameMacroVar(mealIdx,k){
 
 function deleteMacroVar(mealIdx,k){
   const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv=ms[k];
   if (mv.variants.length<=1){ alert('Deve esistere almeno una variante.'); return; }
   if (!confirm('Eliminare la variante attiva?')) return;
   const idx = mv.variants.findIndex(v=>v.id===mv.activeId);
   mv.variants.splice(idx,1);
   mv.activeId = mv.variants[0].id;
   m.items[k] = (mv.variants[0].items||[]).map(i=>({...i}));
-  _syncActiveVariant(mealIdx);
   save();
   renderPlanner();
 }
 
-// Patch syncActiveVariant per tenere aggiornate le macro-varianti
+// Patch syncActiveVariant: salva SEMPRE il "Base" del Tipo pasto (non dipende dalla variante macro attiva)
 const _syncActiveVariant = syncActiveVariant;
 syncActiveVariant = function(mealIdx){
-  _syncActiveVariant(mealIdx);
+  const p=currentProfile(), m=p.meals[mealIdx];
   if (state.ui?.enableMacroVariants){
     ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
+    const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+    const v = getActiveVariant(m);
+    if (v){
+      v.items = {
+        c: (ms.c.variants[0].items||[]).map(i=>({...i})),
+        p: (ms.p.variants[0].items||[]).map(i=>({...i})),
+        f: (ms.f.variants[0].items||[]).map(i=>({...i}))
+      };
+      save();
+      renderPreview();
+      return;
+    }
+  }
+  _syncActiveVariant(mealIdx);
+};
+
+// Override switchVariant: quando cambi Tipo, ripristina macro store e carica l'attiva
+const _switchVariant = switchVariant;
+switchVariant = function(mealIdx, varId){
+  _switchVariant(mealIdx, varId);
+  const p=currentProfile(), m=p.meals[mealIdx];
+  if (state.ui?.enableMacroVariants){
+    const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+    ['c','p','f'].forEach(k=>{
+      const mv = ms[k];
+      const v = mv.variants.find(x=>x.id===mv.activeId) || mv.variants[0];
+      m.items[k] = (v.items||[]).map(i=>({...i}));
+    });
+    save();
+    renderPlanner();
   }
 };
 
-// Override macroBox per includere: vista tutti + UI varianti macro
-const _macroBoxOrig = macroBox;
+// Helper: trova variant macro oggetto
+function findMacroVariant(mealIdx,k,varId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  return mv.variants.find(v=>v.id===varId);
+}
+
+function updateVariantItem(mealIdx,k,varId,foodId,patch){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  const v = mv.variants.find(x=>x.id===varId);
+  if (!v) return;
+  const it = v.items.find(x=>x.foodId===foodId);
+  if (!it) return;
+  Object.assign(it, patch);
+  // se è la variante attiva per quel macro, allinea anche m.items[k]
+  if (mv.activeId===varId){
+    const it2 = m.items[k].find(x=>x.foodId===foodId);
+    if (it2) Object.assign(it2, patch);
+    updateMealBadges(mealIdx, m);
+  }
+  // se stiamo modificando Base (index 0), propaga in export (syncActiveVariant lo farà su save)
+  save();
+}
+
+function addFoodToVariant(mealIdx,k,varId,foodId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  const v = mv.variants.find(x=>x.id===varId);
+  if (!v) return;
+  if (v.items.some(it=>it.foodId===foodId)) return;
+  v.items.push({foodId, g:0, auto:false, approxDir:null, autoPct:100});
+  if (mv.activeId===varId){
+    if (!m.items[k].some(it=>it.foodId===foodId)) m.items[k].push({foodId, g:0, auto:false, approxDir:null, autoPct:100});
+    updateMealBadges(mealIdx, m);
+  }
+  save();
+  renderPlanner();
+}
+
+function delFoodFromVariant(mealIdx,k,varId,foodId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  const v = mv.variants.find(x=>x.id===varId);
+  if (!v) return;
+  v.items = v.items.filter(it=>it.foodId!==foodId);
+  if (mv.activeId===varId){
+    m.items[k] = m.items[k].filter(it=>it.foodId!==foodId);
+    updateMealBadges(mealIdx, m);
+  }
+  save();
+  renderPlanner();
+}
+
+// Override macroBox: mostra tutte le varianti e ora sono EDITABILI
 macroBox = function(k,label,idx,m){
-  // varianti macro UI
   const mvUI = buildMacroVarUI(m, idx, k);
+  const foodOpts = buildFoodOptionsForGroup(k);
 
-  const listFoods = (state.ui?.showAllFoods) ? state.foods.slice() : state.foods.filter(x=>x.group===k);
-  const opts = listFoods
-    .sort((a,b)=>a.name.localeCompare(b.name))
-    .map(f=>{
-      const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
-      return `<option value="${f.id}">${f.name}${badge}</option>`;
-    }).join('');
-
-  const items = m.items[k].map(it=>{
+  // items attivi (contano nel residuo)
+  const itemsActive = (m.items[k]||[]).map(it=>{
     const f = state.foods.find(x=>x.id===it.foodId);
     if (!f) return '';
     const tag = k==='c'?'c':k==='p'?'p':'f';
@@ -2241,22 +2339,64 @@ macroBox = function(k,label,idx,m){
     `;
   }).join('');
 
+  // Varianti editabili
+  let variantsHtml = '';
+  if (state.ui?.enableMacroVariants){
+    const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+    const mv = ms[k];
+    variantsHtml = mv.variants.map(v=>{
+      const isActive = (v.id===mv.activeId);
+      const rows = (v.items||[]).map(it=>{
+        const f = state.foods.find(x=>x.id===it.foodId);
+        if (!f) return '';
+        return `
+          <div class="item">
+            <div>
+              <div style="font-weight:600">${f.name}</div>
+              <div class="meta">Grammi: <input type="number" step="1" min="0" value="${it.g||0}" data-role="mvGrams" data-meal="${idx}" data-k="${k}" data-var="${v.id}" data-food="${it.foodId}" style="width:90px"/> g</div>
+            </div>
+            <div class="inline">
+              <button class="secondary danger" data-role="mvDel" data-meal="${idx}" data-k="${k}" data-var="${v.id}" data-food="${it.foodId}">Rimuovi</button>
+            </div>
+          </div>
+        `;
+      }).join('') || '<div class="muted">—</div>';
+
+      return `
+        <div class="macro-variant-box ${isActive?'':'inactive'}">
+          <div class="mv-title">
+            <div class="name">${v.name} ${isActive?'<span class="muted">(attiva)</span>':''}</div>
+          </div>
+          <div class="mv-items">${rows}</div>
+          <div class="mv-tools">
+            <select data-role="mvAddSel" data-meal="${idx}" data-k="${k}" data-var="${v.id}">
+              <option value="">+ Aggiungi alimento...</option>
+              ${foodOpts}
+            </select>
+            <button class="secondary" data-role="mvAddBtn" data-meal="${idx}" data-k="${k}" data-var="${v.id}">Aggiungi</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   return `
     <div class="macro">
       <h5>${label}</h5>
       <div class="inline">
         ${mvUI}
         <select data-role="addFood" data-meal="${idx}" data-k="${k}">
-          <option value="">+ Aggiungi alimento...</option>${opts}
+          <option value="">+ Aggiungi alimento...</option>${foodOpts}
         </select>
         <button class="secondary" data-role="autoFill" data-meal="${idx}" data-k="${k}">Auto (1 alimento)</button>
       </div>
-      <div style="margin-top:6px">${items || '<div class="muted">Nessun alimento</div>'}</div>
+      <div style="margin-top:6px">${itemsActive || '<div class="muted">Nessun alimento</div>'}</div>
+      ${state.ui?.enableMacroVariants ? `<div style="margin-top:8px"><div class="muted">Varianti (modificabili):</div>${variantsHtml}</div>` : ''}
     </div>
   `;
 };
 
-// Eventi per macro varianti (capture su container)
+// Eventi per macro varianti (select + bottoni)
 els.mealsContainer?.addEventListener('change', (e)=>{
   const t=e.target;
   if (t?.dataset?.role==='macroVarSelect'){
@@ -2271,6 +2411,7 @@ els.mealsContainer?.addEventListener('click', (e)=>{
   if (!b) return;
   const role=b.dataset.role;
   if (!role) return;
+
   if (role==='macroVarNew' || role==='macroVarRen' || role==='macroVarDel'){
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -2278,10 +2419,113 @@ els.mealsContainer?.addEventListener('click', (e)=>{
     if (role==='macroVarNew') newMacroVar(mealIdx,k);
     else if (role==='macroVarRen') renameMacroVar(mealIdx,k);
     else if (role==='macroVarDel') deleteMacroVar(mealIdx,k);
+    return;
+  }
+
+  if (role==='mvAddBtn'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const mealIdx=parseInt(b.dataset.meal), k=b.dataset.k, varId=b.dataset.var;
+    const sel = els.mealsContainer.querySelector(`select[data-role="mvAddSel"][data-meal="${mealIdx}"][data-k="${k}"][data-var="${varId}"]`);
+    const foodId = sel?.value;
+    if (!foodId) return;
+    addFoodToVariant(mealIdx,k,varId,foodId);
+    if (sel) sel.value='';
+    return;
+  }
+
+  if (role==='mvDel'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    delFoodFromVariant(parseInt(b.dataset.meal), b.dataset.k, b.dataset.var, b.dataset.food);
+    return;
   }
 }, true);
 
-// ---------- Attiva toggle UI ----------
+els.mealsContainer?.addEventListener('input', (e)=>{
+  const t=e.target;
+  if (t?.dataset?.role==='mvGrams'){
+    const mealIdx = parseInt(t.dataset.meal);
+    const k=t.dataset.k, varId=t.dataset.var, foodId=t.dataset.food;
+    let v = parse(t.value);
+    // snap opzionale
+    const p=currentProfile(), m=p.meals[mealIdx];
+    if (state.ui?.snapManual5){
+      const r = roundTo5WithDir(v);
+      v = r.g;
+      t.value = r.g;
+      updateVariantItem(mealIdx,k,varId,foodId,{g:v, auto:false, approxDir:r.dir});
+    } else {
+      updateVariantItem(mealIdx,k,varId,foodId,{g:v, auto:false, approxDir:null});
+    }
+  }
+}, true);
+
+// ---------- Export/Anteprima: includi varianti macro dentro ogni Tipo ----------
+renderPreview = function(){
+  const p = currentProfile();
+  const root = els.previewContainer;
+  if (!root) return;
+  const opts = state.ui?.preview || { showC:true, showP:true, showF:true, showTargets:true };
+  const cols = [];
+  if (opts.showC) cols.push({title:'Carboidrati', k:'c', tag:'c'});
+  if (opts.showP) cols.push({title:'Proteine', k:'p', tag:'p'});
+  if (opts.showF) cols.push({title:'Grassi', k:'f', tag:'f'});
+  const colCount = Math.max(1, cols.length);
+
+  let html = '';
+  p.meals.forEach((m,mi)=>{
+    html += `
+      <div class="meal">
+        <div class="inline" style="justify-content:space-between">
+          <h4>${mi+1}. ${m.name}</h4>
+          ${opts.showTargets ? `<span class="badge">C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>` : ''}
+        </div>
+    `;
+
+    m.variants.forEach((v,vi)=>{
+      const vClass = `var${vi%6}`;
+      html += `
+        <div class="var-box">
+          <div class="var-title"><span class="var-badge ${vClass}">${v.name}</span></div>
+          <div class="grid" style="grid-template-columns:repeat(${colCount},1fr);gap:8px">
+            ${cols.map(c=> previewColWithMacroVariants(m, v, c.title, c.k, c.tag)).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  });
+
+  root.innerHTML = html || `<div class="muted">Nessun pasto definito.</div>`;
+};
+
+function previewColWithMacroVariants(meal, mealVar, title, k, tag){
+  if (state.ui?.enableMacroVariants && meal._macroByMealVar && meal._macroByMealVar[mealVar.id]){
+    const mv = (meal._macroByMealVar[mealVar.id][k]);
+    if (mv && Array.isArray(mv.variants)){
+      const blocks = mv.variants.map(vv=>{
+        const rows = (vv.items||[]).map(it=>{
+          const f = state.foods.find(x=>x.id===it.foodId);
+          if (!f) return '';
+          return `<div class="item" style="grid-template-columns:1fr auto"><div>${f.name}</div><div class="muted">${it.g||0} g</div></div>`;
+        }).join('') || `<div class="muted">—</div>`;
+        return `<div class="macro-variant-box"><div class="mv-title"><div class="name">${vv.name}</div></div><div class="list" style="max-height:none">${rows}</div></div>`;
+      }).join('');
+      return `<div><div class="tag ${tag}">${title}</div>${blocks}</div>`;
+    }
+  }
+
+  const rows = (mealVar.items[k]||[]).map(it=>{
+    const f = state.foods.find(x=>x.id===it.foodId);
+    if (!f) return '';
+    return `<div class="item" style="grid-template-columns:1fr auto"><div>${f.name}</div><div class="muted">${it.g||0} g</div></div>`;
+  }).join('') || `<div class="muted">—</div>`;
+  return `<div><div class="tag ${tag}">${title}</div><div class="list" style="max-height:none">${rows}</div></div>`;
+}
+
+// ---------- Toggle handlers ----------
 function bindPatchedToggles(){
   const tAll = document.getElementById('toggleAllFoods');
   const tVar = document.getElementById('toggleMacroVariants');
@@ -2291,16 +2535,17 @@ function bindPatchedToggles(){
   }
   if (tVar){
     tVar.checked = !!state.ui.enableMacroVariants;
-    tVar.addEventListener('change', ()=>{ state.ui.enableMacroVariants = !!tVar.checked; save(); renderPlanner(); });
+    tVar.addEventListener('change', ()=>{ state.ui.enableMacroVariants = !!tVar.checked; save(); renderPlanner(); renderPreview(); });
   }
 }
 
-// Run patch init
+// Init patch
 ensurePatchedDefaults();
 ensurePatchedUI();
 bindPatchedToggles();
 patchedUpdateFoodPreview();
 renderPlanner();
+renderPreview();
 
 
 </script>
