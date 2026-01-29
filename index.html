@@ -4,13 +4,210 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Suite Dieta & Palestra</title>
+  <style>
+    :root{
+      --bg:#0b1021;--panel:#0f172a;--card:#0b1220;--muted:#94a3b8;--text:#e5e7eb;
+      --pri:#22d3ee;--acc:#a78bfa;--ok:#34d399;--warn:#f59e0b;--danger:#ef4444;
+      --brd:rgba(255,255,255,.08)
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;background:linear-gradient(135deg,#0b1021,#111827 40%,#0b1021);color:var(--text)}
+    header{padding:16px;border-bottom:1px solid var(--brd);background:rgba(15,23,42,.7);backdrop-filter:blur(6px)}
+    header h1{margin:0;font-size:clamp(18px,3.6vw,26px)}
+    header p{margin:4px 0 0;color:var(--muted)}
+    .wrap{max-width:1100px;margin:0 auto;padding:14px}
+    .panel{background:rgba(2,6,23,.55);border:1px solid var(--brd);border-radius:14px;padding:12px}
+    .sec{margin-bottom:12px}
+    .sec h3{margin:0 0 8px;font-size:15px;color:#dbeafe}
+    input,button{border-radius:10px;border:1px solid var(--brd);background:#0b1220;color:var(--text);padding:8px 10px;outline:none;min-width:0}
+    input:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(34,211,238,.18)}
+    button{cursor:pointer;font-weight:700}
+    .btn{background:linear-gradient(135deg,var(--pri),var(--acc));border:none;color:#0b1220}
+    .secondary{background:#0b1220;color:var(--text);border:1px solid var(--brd)}
+    .danger{border-color:#b91c1c;color:#fee2e2}
+    .row{display:grid;gap:8px}
+    .two{grid-template-columns:1fr 1fr}
+    .three{grid-template-columns:repeat(3,1fr)}
+    .grid{display:grid;gap:10px}
+    .cards{grid-template-columns:repeat(3,1fr)}
+    .card{padding:14px;border:1px solid var(--brd);border-radius:14px;background:rgba(11,18,32,.55);display:flex;flex-direction:column;gap:8px}
+    .card h4{margin:0}
+    .card p{margin:0;color:var(--muted);font-size:13px}
+    .inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .right{justify-content:flex-end}
+    .badge{padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--brd);background:#0b1220;color:#94a3b8}
+    .badge.ok{color:#10b981;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.35)}
+    .badge.warn{color:#f59e0b;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35)}
+    .badge.err{color:#ef4444;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}
+    .badge.neu{color:#94a3b8;background:rgba(148,163,184,.10);border-color:rgba(255,255,255,.12)}
+    .hintbar{margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
+      background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(167,139,250,.12));color:#e2e8f0;font-size:13px}
+    a.btnLink{display:inline-block;text-decoration:none;padding:8px 12px;border-radius:10px;background:linear-gradient(135deg,var(--pri),var(--acc));color:#0b1220;font-weight:800}
+    @media (max-width:980px){.two,.three,.cards{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
-  <h2>Suite Dieta & Palestra</h2>
-  <p>
-    <a href="./dieta/">Apri Dieta</a> •
-    <a href="./palestra/">Apri Palestra</a> •
-    <a href="./ricette/">Apri Ricette</a>
-  </p>
+<header>
+  <h1>Suite Dieta & Palestra</h1>
+  <p>Home • Login • Accesso alle app</p>
+</header>
+<div class="wrap">
+  <div class="panel">
+    <div class="sec">
+      <div class="inline" style="justify-content:space-between">
+        <h3>Stato</h3>
+        <div class="inline right">
+          <span id="authBadge" class="badge neu">—</span>
+          <span id="netBadge" class="badge neu">Rete: —</span>
+        </div>
+      </div>
+      <div class="hintbar" id="statusHint">Effettua login per attivare sincronizzazione cloud nelle app.</div>
+    </div>
+
+    <div class="sec">
+      <h3>Login (Email/Password)</h3>
+      <div class="row two">
+        <input id="email" type="email" placeholder="Email" />
+        <input id="password" type="password" placeholder="Password" />
+      </div>
+      <div class="row three" style="margin-top:8px">
+        <button class="btn" id="loginBtn">Login</button>
+        <button class="secondary" id="registerBtn">Crea account</button>
+        <button class="secondary danger" id="logoutBtn">Logout</button>
+      </div>
+      <div class="row two" style="margin-top:8px">
+        <button class="secondary" id="resetPwdBtn">Password dimenticata?</button>
+        <div class="inline right"><span class="badge neu" id="syncBadge">Sync: —</span></div>
+      </div>
+      <div class="hintbar" id="authDebug" style="margin-top:8px"></div>
+    </div>
+
+    <div class="sec">
+      <h3>App</h3>
+      <div class="grid cards">
+        <div class="card">
+          <h4>Dieta</h4>
+          <p>Planner pasti, alimenti, varianti macro, export.</p>
+          <div class="inline right"><a class="btnLink" href="./dieta/">Apri</a></div>
+        </div>
+        <div class="card">
+          <h4>Palestra</h4>
+          <p>Allenamenti e schede.</p>
+          <div class="inline right"><a class="btnLink" href="./palestra/">Apri</a></div>
+        </div>
+        <div class="card">
+          <h4>Ricette</h4>
+          <p>Archivio ricette, categorie, tag, sync.</p>
+          <div class="inline right"><a class="btnLink" href="./ricette/">Apri</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import {
+    getAuth,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDf5y-wlgT4gylL4d_cMQe_ik8s_S09VRc",
+    authDomain: "programma-dieta-952d7.firebaseapp.com",
+    projectId: "programma-dieta-952d7",
+    storageBucket: "programma-dieta-952d7.firebasestorage.app",
+    messagingSenderId: "16575395211",
+    appId: "1:16575395211:web:f96fe4db36fcc85cf96b8e",
+    measurementId: "G-17Q7WZDRQ0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  const $ = (s)=>document.querySelector(s);
+
+  function setNet(){
+    const on = navigator.onLine;
+    $('#netBadge').className = 'badge ' + (on ? 'ok':'warn');
+    $('#netBadge').textContent = 'Rete: ' + (on ? 'Online':'Offline');
+  }
+  window.addEventListener('online', setNet);
+  window.addEventListener('offline', setNet);
+  setNet();
+
+  function setAuthBadge(state, text){
+    $('#authBadge').className = 'badge ' + state;
+    $('#authBadge').textContent = text;
+  }
+
+  function debug(msg){
+    $('#authDebug').textContent = msg || '';
+  }
+
+  $('#loginBtn').addEventListener('click', async ()=>{
+    const email = $('#email').value.trim();
+    const pwd = $('#password').value;
+    if (!email || !pwd){ debug('Inserisci email e password.'); return; }
+    $('#loginBtn').disabled = true;
+    debug('Login in corso…');
+    try{
+      await signInWithEmailAndPassword(auth, email, pwd);
+      debug('Login OK.');
+    } catch(e){
+      console.error(e);
+      debug('Login fallito: ' + (e.code||'') + ' ' + (e.message||''));
+      alert('Login fallito: ' + (e.message||e.code));
+    } finally {
+      $('#loginBtn').disabled = false;
+    }
+  });
+
+  $('#registerBtn').addEventListener('click', async ()=>{
+    const email = $('#email').value.trim();
+    const pwd = $('#password').value;
+    if (!email || !pwd){ debug('Inserisci email e password.'); return; }
+    debug('Creo account…');
+    try{
+      await createUserWithEmailAndPassword(auth, email, pwd);
+      debug('Account creato ✅');
+    } catch(e){
+      console.error(e);
+      debug('Registrazione fallita: ' + (e.code||'') + ' ' + (e.message||''));
+      alert('Registrazione fallita: ' + (e.message||e.code));
+    }
+  });
+
+  $('#logoutBtn').addEventListener('click', async ()=>{ await signOut(auth); });
+
+  $('#resetPwdBtn').addEventListener('click', async ()=>{
+    const email = $('#email').value.trim();
+    if (!email){ alert('Inserisci prima la tua email.'); return; }
+    try{
+      await sendPasswordResetEmail(auth, email);
+      alert('Email di reset inviata. Controlla la posta.');
+    } catch(e){
+      alert('Errore invio reset: ' + (e.message||e.code));
+    }
+  });
+
+  onAuthStateChanged(auth, (user)=>{
+    if (user){
+      setAuthBadge('ok', 'Loggato: ' + (user.email||'utente'));
+      $('#syncBadge').className='badge ok';
+      $('#syncBadge').textContent='Sync: Attivo';
+      $('#statusHint').textContent='Login attivo: apri Dieta/Palestra/Ricette e la sync cloud sarà disponibile.';
+    } else {
+      setAuthBadge('neu', 'Non loggato');
+      $('#syncBadge').className='badge neu';
+      $('#syncBadge').textContent='Sync: —';
+      $('#statusHint').textContent='Effettua login per attivare sincronizzazione cloud nelle app.';
+    }
+  });
+</script>
 </body>
 </html>
