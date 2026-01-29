@@ -51,6 +51,12 @@
 input[type="checkbox"]{width:auto !important;min-width:auto !important;padding:0 !important;margin:0 !important;accent-color:var(--pri);}
 label.inline{align-items:center;}
 
+/* Inline editor in food list */
+.food-inline-editor{margin-top:8px;padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(11,18,32,.6)}
+.food-inline-editor .row{display:grid;gap:8px}
+.food-inline-editor .row.three{grid-template-columns:repeat(3,1fr)}
+.food-inline-editor .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
   button{cursor:pointer;font-weight:600}
   .btn{background:linear-gradient(135deg,var(--pri),var(--acc));border:none;color:#0b1220}
   .secondary{background:#0b1220;color:var(--text);border:1px solid var(--brd)}
@@ -165,6 +171,7 @@ label.inline{align-items:center;}
   <div class="header-status">
    <span id="authBadge" class="badge neu"></span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
+ <span id="buildBadge" class="badge neu">Build: 2026-01-29 r2</span>
   </div>
  </div>
 </header>
@@ -195,7 +202,8 @@ label.inline{align-items:center;}
 
     <div class="sec">
       <h3>Calorie per macro</h3>
-      <div class="inline">
+      <div id="foodEdit-${f.id}" class="food-inline-editor hidden"></div>
+ <div class="inline">
         <span class="tag c">Carbo 4 kcal/g</span>
         <span class="tag p">Proteine 4 kcal/g</span>
         <span class="tag f">Grassi 9 kcal/g</span>
@@ -791,9 +799,8 @@ if (lastTab) setTab(lastTab);
   if (typeof state.ui.snapManual5 !== 'boolean') state.ui.snapManual5 = false;
  if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
  if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
-  if (!state.ui.preview) state.ui.preview = {showC:true,showP:true,showF:true,showTargets:true};
- // normalizza foods esistenti
  if (Array.isArray(state.foods)) state.foods.forEach(f=>{ if (typeof f.groupLocked !== 'boolean') f.groupLocked = false; });
+  if (!state.ui.preview) state.ui.preview = {showC:true,showP:true,showF:true,showTargets:true};
   if (!state.foodsVersion || state.foodsVersion !== CURATED_VERSION){
     state.foods = CURATED_FOODS.map(f=>({ ...f, groupLocked: !!f.groupLocked }));
     state.foodsVersion = CURATED_VERSION;
@@ -969,9 +976,7 @@ function syncActiveVariant(mealIdx){
   v.items = cloneItems(m.items);
   save();
   renderPreview();
-  if (state.ui?.enableMacroVariants){
-    ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
-  }
+ if (state.ui?.enableMacroVariants){ ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k)); }
 }
 function switchVariant(mealIdx, varId){
   const p = currentProfile(), m = p.meals[mealIdx];
@@ -1095,10 +1100,16 @@ function deleteMacroVar(mealIdx,k){
   save();
   renderPlanner();
 }
+
 function macroBox(k,label,idx,m){
  const mvUI = buildMacroVarUI(m, idx, k);
-  const opts = state.foods.filter(x=>x.group===k).sort((a,b)=>a.name.localeCompare(b.name))
-    .map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+  const listFoods = (state.ui?.showAllFoods) ? state.foods.slice() : state.foods.filter(x=>x.group===k);
+ const opts = listFoods
+  .sort((a,b)=>a.name.localeCompare(b.name))
+  .map(f=>{
+    const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
+    return `<option value="${f.id}">${f.name}${badge}</option>`;
+  }).join('');
   const items = m.items[k].map(it=>{
     const f = state.foods.find(x=>x.id===it.foodId);
     if (!f) return '';
@@ -1529,7 +1540,6 @@ function toggleInlineFoodEditor(id){
 function editFood(id){
   const f = state.foods.find(x=>x.id===id); if (!f) return;
   els.fName.value = f.name; els.fKcal.value=f.kcal; els.fCarb.value=f.c; els.fProt.value=f.p; els.fFat.value=f.fat;
- if (els.fGroupMode) els.fGroupMode.value = (f.groupLocked ? (f.group || 'auto') : 'auto');
   els.addFoodBtn.textContent='Salva'; els.addFoodBtn.dataset.editingId = f.id;
   updateFoodPreview();
 }
