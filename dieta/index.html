@@ -159,6 +159,8 @@ label.inline input[type="checkbox"]{width:auto;min-width:auto;padding:0;margin:0
 .macro-variant-box.inactive{opacity:.78}
 .macro-variant-box .mv-items{display:grid;gap:8px}
 .macro-variant-box .mv-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;justify-content:flex-end}
+.macro-variant-box .mv-tools select{min-width:240px}
+.macro-variant-box .mv-tools .muted{margin-right:auto}
 
 </style>
 </head>
@@ -1911,7 +1913,7 @@ BOOTING = false;
 // =========================
 // PATCH FUNZIONALE (2026-01-29)
 // - Vista "Tutti" (toggleAllFoods) in Planner
-// - Varianti per macro: visibili tutte + MODIFICABILI + export/anteprima
+// - Varianti per macro: visibili tutte + MODIFICABILI + AUTO + export/anteprima
 // - Gruppo alimento manuale (fGroupMode + groupLocked)
 // - Modifica alimento inline nell'elenco + autoclose
 // =========================
@@ -2140,7 +2142,7 @@ function buildFoodOptionsForGroup(k){
     .sort((a,b)=>a.name.localeCompare(b.name))
     .map(f=>{
       const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
-      return `<option value="${f.id}">${f.name}${badge}</option>`;
+      return `<option value=\"${f.id}\">${f.name}${badge}</option>`;
     }).join('');
 }
 
@@ -2148,13 +2150,13 @@ function buildMacroVarUI(m, mealIdx, k){
   if (!state.ui?.enableMacroVariants) return '';
   const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
   const mv = ms[k];
-  const opts = mv.variants.map(v=>`<option value="${v.id}" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
+  const opts = mv.variants.map(v=>`<option value=\"${v.id}\" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
   return `
-    <span class="muted">Variante</span>
-    <select data-role="macroVarSelect" data-meal="${mealIdx}" data-k="${k}" style="width:auto; min-width:120px">${opts}</select>
-    <button class="secondary" data-role="macroVarNew" data-meal="${mealIdx}" data-k="${k}" title="Nuova variante">+</button>
-    <button class="secondary" data-role="macroVarRen" data-meal="${mealIdx}" data-k="${k}" title="Rinomina variante">R</button>
-    <button class="secondary danger" data-role="macroVarDel" data-meal="${mealIdx}" data-k="${k}" title="Elimina variante">×</button>
+    <span class=\"muted\">Variante</span>
+    <select data-role=\"macroVarSelect\" data-meal=\"${mealIdx}\" data-k=\"${k}\" style=\"width:auto; min-width:120px\">${opts}</select>
+    <button class=\"secondary\" data-role=\"macroVarNew\" data-meal=\"${mealIdx}\" data-k=\"${k}\" title=\"Nuova variante\">+</button>
+    <button class=\"secondary\" data-role=\"macroVarRen\" data-meal=\"${mealIdx}\" data-k=\"${k}\" title=\"Rinomina variante\">R</button>
+    <button class=\"secondary danger\" data-role=\"macroVarDel\" data-meal=\"${mealIdx}\" data-k=\"${k}\" title=\"Elimina variante\">×</button>
   `;
 }
 
@@ -2211,7 +2213,7 @@ function deleteMacroVar(mealIdx,k){
   renderPlanner();
 }
 
-// Patch syncActiveVariant: salva SEMPRE il "Base" del Tipo pasto (non dipende dalla variante macro attiva)
+// Patch syncActiveVariant: salva SEMPRE il "Base" del Tipo pasto
 const _syncActiveVariant = syncActiveVariant;
 syncActiveVariant = function(mealIdx){
   const p=currentProfile(), m=p.meals[mealIdx];
@@ -2233,7 +2235,7 @@ syncActiveVariant = function(mealIdx){
   _syncActiveVariant(mealIdx);
 };
 
-// Override switchVariant: quando cambi Tipo, ripristina macro store e carica l'attiva
+// Override switchVariant: quando cambi Tipo, carica le varianti macro attive
 const _switchVariant = switchVariant;
 switchVariant = function(mealIdx, varId){
   _switchVariant(mealIdx, varId);
@@ -2250,12 +2252,20 @@ switchVariant = function(mealIdx, varId){
   }
 };
 
-// Helper: trova variant macro oggetto
-function findMacroVariant(mealIdx,k,varId){
+// --- AUTO helper per varianti ---
+function macroPer100(food, k){
+  return (k==='c') ? (food.c||0) : (k==='p') ? (food.p||0) : (food.fat||0);
+}
+
+function computeAutoGrams(mealIdx,k,foodId,pct){
   const p=currentProfile(), m=p.meals[mealIdx];
-  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
-  const mv = ms[k];
-  return mv.variants.find(v=>v.id===varId);
+  const food = state.foods.find(x=>x.id===foodId);
+  if (!food) return null;
+  const per100 = macroPer100(food,k);
+  if (per100<=0) return null;
+  const targetG = (m.macros?.[k]||0) * ((pct||100)/100);
+  const exact = targetG / (per100/100);
+  return exact;
 }
 
 function updateVariantItem(mealIdx,k,varId,foodId,patch){
@@ -2267,13 +2277,11 @@ function updateVariantItem(mealIdx,k,varId,foodId,patch){
   const it = v.items.find(x=>x.foodId===foodId);
   if (!it) return;
   Object.assign(it, patch);
-  // se è la variante attiva per quel macro, allinea anche m.items[k]
   if (mv.activeId===varId){
     const it2 = m.items[k].find(x=>x.foodId===foodId);
     if (it2) Object.assign(it2, patch);
     updateMealBadges(mealIdx, m);
   }
-  // se stiamo modificando Base (index 0), propaga in export (syncActiveVariant lo farà su save)
   save();
 }
 
@@ -2308,38 +2316,79 @@ function delFoodFromVariant(mealIdx,k,varId,foodId){
   renderPlanner();
 }
 
-// Override macroBox: mostra tutte le varianti e ora sono EDITABILI
+function autoOneItemInVariant(mealIdx,k,varId,foodId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  const v = mv.variants.find(x=>x.id===varId);
+  if (!v) return;
+  const it = v.items.find(x=>x.foodId===foodId);
+  if (!it) return;
+  const pct = it.autoPct ?? 100;
+  const exact = computeAutoGrams(mealIdx,k,foodId,pct);
+  if (exact==null){ alert('Impossibile calcolare: macro = 0.'); return; }
+  if (state.ui?.snapManual5){
+    const r = roundTo5WithDir(exact);
+    updateVariantItem(mealIdx,k,varId,foodId,{g:r.g, auto:true, approxDir:r.dir});
+  } else {
+    updateVariantItem(mealIdx,k,varId,foodId,{g:exact, auto:true, approxDir:null});
+  }
+}
+
+function autoFillVariant(mealIdx,k,varId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
+  const mv = ms[k];
+  const v = mv.variants.find(x=>x.id===varId);
+  if (!v) return;
+  if (!v.items.length){
+    const f = state.foods.find(x=>x.group===k);
+    if (!f){ alert('Nessun alimento nel gruppo selezionato.'); return; }
+    v.items.push({foodId:f.id,g:0,auto:false,approxDir:null,autoPct:100});
+  }
+  const it = v.items[0];
+  autoOneItemInVariant(mealIdx,k,varId,it.foodId);
+  // se è variante attiva, assicurati che m.items contenga quell'alimento
+  if (mv.activeId===varId){
+    if (!m.items[k].some(x=>x.foodId===it.foodId)) m.items[k].push({foodId:it.foodId,g:0,auto:false,approxDir:null,autoPct:it.autoPct??100});
+    // riallinea g
+    const it2 = m.items[k].find(x=>x.foodId===it.foodId);
+    if (it2) Object.assign(it2, {g: it.g, auto: it.auto, approxDir: it.approxDir, autoPct: it.autoPct});
+  }
+  save();
+  renderPlanner();
+}
+
+// Override macroBox: varianti EDITABILI + AUTO
 macroBox = function(k,label,idx,m){
   const mvUI = buildMacroVarUI(m, idx, k);
   const foodOpts = buildFoodOptionsForGroup(k);
 
-  // items attivi (contano nel residuo)
   const itemsActive = (m.items[k]||[]).map(it=>{
     const f = state.foods.find(x=>x.id===it.foodId);
     if (!f) return '';
     const tag = k==='c'?'c':k==='p'?'p':'f';
-    const approx = it.approxDir ? `<span class="approx-badge ${it.approxDir==='up'?'approx-up':'approx-down'}">≈5 ${it.approxDir==='up'?'↑':'↓'}</span>` : '';
-    const auto = it.auto ? `<span class="auto-badge">auto</span>` : '';
+    const approx = it.approxDir ? `<span class=\"approx-badge ${it.approxDir==='up'?'approx-up':'approx-down'}\">≈5 ${it.approxDir==='up'?'↑':'↓'}<\/span>` : '';
+    const auto = it.auto ? `<span class=\"auto-badge\">auto<\/span>` : '';
     return `
-      <div class="item" style="grid-template-columns:1fr auto">
+      <div class=\"item\" style=\"grid-template-columns:1fr auto\">
         <div>
-          <div style="font-weight:600">${f.name} <span class="tag ${tag}">${label[0]}</span></div>
-          <div class="meta">
-            Grammi: <input type="number" step="1" min="0" value="${it.g}" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" data-role="grams" style="width:90px"/> g
+          <div style=\"font-weight:600\">${f.name} <span class=\"tag ${tag}\">${label[0]}<\/span><\/div>
+          <div class=\"meta\">
+            Grammi: <input type=\"number\" step=\"1\" min=\"0\" value=\"${it.g}\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\" data-role=\"grams\" style=\"width:90px\"/> g
             ${auto} ${approx}
-          </div>
-        </div>
-        <div class="inline">
-          <span class="muted">%</span>
-          <input type="number" min="0" max="100" step="5" style="width:64px" value="${it.autoPct ?? 100}" data-role="itemPct" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" title="Percentuale del target macro che questo alimento deve coprire"/>
-          <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
-          <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
-        </div>
-      </div>
+          <\/div>
+        <\/div>
+        <div class=\"inline\">
+          <span class=\"muted\">%<\/span>
+          <input type=\"number\" min=\"0\" max=\"100\" step=\"5\" style=\"width:64px\" value=\"${it.autoPct ?? 100}\" data-role=\"itemPct\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\" title=\"Percentuale del target macro che questo alimento deve coprire\"/>
+          <button class=\"secondary\" data-role=\"auto1\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\">Auto (copri ${label.toLowerCase()})<\/button>
+          <button class=\"secondary danger\" data-role=\"delItem\" data-meal=\"${idx}\" data-k=\"${k}\" data-food=\"${it.foodId}\">Rimuovi<\/button>
+        <\/div>
+      <\/div>
     `;
   }).join('');
 
-  // Varianti editabili
   let variantsHtml = '';
   if (state.ui?.enableMacroVariants){
     const ms = ensureMacroVariantsForMealVar(m, m.activeVarId);
@@ -2349,50 +2398,56 @@ macroBox = function(k,label,idx,m){
       const rows = (v.items||[]).map(it=>{
         const f = state.foods.find(x=>x.id===it.foodId);
         if (!f) return '';
+        const pct = it.autoPct ?? 100;
         return `
-          <div class="item">
+          <div class=\"item\">
             <div>
-              <div style="font-weight:600">${f.name}</div>
-              <div class="meta">Grammi: <input type="number" step="1" min="0" value="${it.g||0}" data-role="mvGrams" data-meal="${idx}" data-k="${k}" data-var="${v.id}" data-food="${it.foodId}" style="width:90px"/> g</div>
-            </div>
-            <div class="inline">
-              <button class="secondary danger" data-role="mvDel" data-meal="${idx}" data-k="${k}" data-var="${v.id}" data-food="${it.foodId}">Rimuovi</button>
-            </div>
-          </div>
+              <div style=\"font-weight:600\">${f.name}<\/div>
+              <div class=\"meta\">Grammi: <input type=\"number\" step=\"1\" min=\"0\" value=\"${it.g||0}\" data-role=\"mvGrams\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\" data-food=\"${it.foodId}\" style=\"width:90px\"/> g<\/div>
+            <\/div>
+            <div class=\"inline\">
+              <span class=\"muted\">%<\/span>
+              <input type=\"number\" min=\"0\" max=\"100\" step=\"5\" style=\"width:64px\" value=\"${pct}\" data-role=\"mvPct\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\" data-food=\"${it.foodId}\" title=\"Percentuale del target macro per questo alimento (variante)\"/>
+              <button class=\"secondary\" data-role=\"mvAuto1\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\" data-food=\"${it.foodId}\">Auto (copri ${label.toLowerCase()})<\/button>
+              <button class=\"secondary danger\" data-role=\"mvDel\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\" data-food=\"${it.foodId}\">Rimuovi<\/button>
+            <\/div>
+          <\/div>
         `;
       }).join('') || '<div class="muted">—</div>';
 
       return `
-        <div class="macro-variant-box ${isActive?'':'inactive'}">
-          <div class="mv-title">
-            <div class="name">${v.name} ${isActive?'<span class="muted">(attiva)</span>':''}</div>
-          </div>
-          <div class="mv-items">${rows}</div>
-          <div class="mv-tools">
-            <select data-role="mvAddSel" data-meal="${idx}" data-k="${k}" data-var="${v.id}">
-              <option value="">+ Aggiungi alimento...</option>
+        <div class=\"macro-variant-box ${isActive?'':'inactive'}\">
+          <div class=\"mv-title\">
+            <div class=\"name\">${v.name} ${isActive?'<span class="muted">(attiva)</span>':''}<\/div>
+          <\/div>
+          <div class=\"mv-items\">${rows}<\/div>
+          <div class=\"mv-tools\">
+            <span class=\"muted\">Auto variante:<\/span>
+            <button class=\"secondary\" data-role=\"mvAutoFill\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\">Auto (1 alimento)<\/button>
+            <select data-role=\"mvAddSel\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\">
+              <option value=\"\">+ Aggiungi alimento...<\/option>
               ${foodOpts}
-            </select>
-            <button class="secondary" data-role="mvAddBtn" data-meal="${idx}" data-k="${k}" data-var="${v.id}">Aggiungi</button>
-          </div>
-        </div>
+            <\/select>
+            <button class=\"secondary\" data-role=\"mvAddBtn\" data-meal=\"${idx}\" data-k=\"${k}\" data-var=\"${v.id}\">Aggiungi<\/button>
+          <\/div>
+        <\/div>
       `;
     }).join('');
   }
 
   return `
-    <div class="macro">
-      <h5>${label}</h5>
-      <div class="inline">
+    <div class=\"macro\">
+      <h5>${label}<\/h5>
+      <div class=\"inline\">
         ${mvUI}
-        <select data-role="addFood" data-meal="${idx}" data-k="${k}">
-          <option value="">+ Aggiungi alimento...</option>${foodOpts}
-        </select>
-        <button class="secondary" data-role="autoFill" data-meal="${idx}" data-k="${k}">Auto (1 alimento)</button>
-      </div>
-      <div style="margin-top:6px">${itemsActive || '<div class="muted">Nessun alimento</div>'}</div>
-      ${state.ui?.enableMacroVariants ? `<div style="margin-top:8px"><div class="muted">Varianti (modificabili):</div>${variantsHtml}</div>` : ''}
-    </div>
+        <select data-role=\"addFood\" data-meal=\"${idx}\" data-k=\"${k}\">
+          <option value=\"\">+ Aggiungi alimento...<\/option>${foodOpts}
+        <\/select>
+        <button class=\"secondary\" data-role=\"autoFill\" data-meal=\"${idx}\" data-k=\"${k}\">Auto (1 alimento)<\/button>
+      <\/div>
+      <div style=\"margin-top:6px\">${itemsActive || '<div class="muted">Nessun alimento</div>'}<\/div>
+      ${state.ui?.enableMacroVariants ? `<div style=\"margin-top:8px\"><div class=\"muted\">Varianti (modificabili):<\/div>${variantsHtml}<\/div>` : ''}
+    <\/div>
   `;
 };
 
@@ -2426,7 +2481,7 @@ els.mealsContainer?.addEventListener('click', (e)=>{
     e.preventDefault();
     e.stopImmediatePropagation();
     const mealIdx=parseInt(b.dataset.meal), k=b.dataset.k, varId=b.dataset.var;
-    const sel = els.mealsContainer.querySelector(`select[data-role="mvAddSel"][data-meal="${mealIdx}"][data-k="${k}"][data-var="${varId}"]`);
+    const sel = els.mealsContainer.querySelector(`select[data-role=\"mvAddSel\"][data-meal=\"${mealIdx}\"][data-k=\"${k}\"][data-var=\"${varId}\"]`);
     const foodId = sel?.value;
     if (!foodId) return;
     addFoodToVariant(mealIdx,k,varId,foodId);
@@ -2440,6 +2495,21 @@ els.mealsContainer?.addEventListener('click', (e)=>{
     delFoodFromVariant(parseInt(b.dataset.meal), b.dataset.k, b.dataset.var, b.dataset.food);
     return;
   }
+
+  if (role==='mvAuto1'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    autoOneItemInVariant(parseInt(b.dataset.meal), b.dataset.k, b.dataset.var, b.dataset.food);
+    renderPlanner();
+    return;
+  }
+
+  if (role==='mvAutoFill'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    autoFillVariant(parseInt(b.dataset.meal), b.dataset.k, b.dataset.var);
+    return;
+  }
 }, true);
 
 els.mealsContainer?.addEventListener('input', (e)=>{
@@ -2448,8 +2518,6 @@ els.mealsContainer?.addEventListener('input', (e)=>{
     const mealIdx = parseInt(t.dataset.meal);
     const k=t.dataset.k, varId=t.dataset.var, foodId=t.dataset.food;
     let v = parse(t.value);
-    // snap opzionale
-    const p=currentProfile(), m=p.meals[mealIdx];
     if (state.ui?.snapManual5){
       const r = roundTo5WithDir(v);
       v = r.g;
@@ -2458,6 +2526,13 @@ els.mealsContainer?.addEventListener('input', (e)=>{
     } else {
       updateVariantItem(mealIdx,k,varId,foodId,{g:v, auto:false, approxDir:null});
     }
+  }
+  if (t?.dataset?.role==='mvPct'){
+    const mealIdx = parseInt(t.dataset.meal);
+    const k=t.dataset.k, varId=t.dataset.var, foodId=t.dataset.food;
+    const v = Math.max(0, Math.min(100, Math.round(parse(t.value))));
+    t.value = v;
+    updateVariantItem(mealIdx,k,varId,foodId,{autoPct:v});
   }
 }, true);
 
@@ -2476,19 +2551,19 @@ renderPreview = function(){
   let html = '';
   p.meals.forEach((m,mi)=>{
     html += `
-      <div class="meal">
-        <div class="inline" style="justify-content:space-between">
+      <div class=\"meal\">
+        <div class=\"inline\" style=\"justify-content:space-between\">
           <h4>${mi+1}. ${m.name}</h4>
-          ${opts.showTargets ? `<span class="badge">C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>` : ''}
+          ${opts.showTargets ? `<span class=\"badge\">C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</span>` : ''}
         </div>
     `;
 
     m.variants.forEach((v,vi)=>{
       const vClass = `var${vi%6}`;
       html += `
-        <div class="var-box">
-          <div class="var-title"><span class="var-badge ${vClass}">${v.name}</span></div>
-          <div class="grid" style="grid-template-columns:repeat(${colCount},1fr);gap:8px">
+        <div class=\"var-box\">
+          <div class=\"var-title\"><span class=\"var-badge ${vClass}\">${v.name}</span></div>
+          <div class=\"grid\" style=\"grid-template-columns:repeat(${colCount},1fr);gap:8px\">
             ${cols.map(c=> previewColWithMacroVariants(m, v, c.title, c.k, c.tag)).join('')}
           </div>
         </div>
@@ -2498,7 +2573,7 @@ renderPreview = function(){
     html += `</div>`;
   });
 
-  root.innerHTML = html || `<div class="muted">Nessun pasto definito.</div>`;
+  root.innerHTML = html || `<div class=\"muted\">Nessun pasto definito.</div>`;
 };
 
 function previewColWithMacroVariants(meal, mealVar, title, k, tag){
@@ -2509,20 +2584,20 @@ function previewColWithMacroVariants(meal, mealVar, title, k, tag){
         const rows = (vv.items||[]).map(it=>{
           const f = state.foods.find(x=>x.id===it.foodId);
           if (!f) return '';
-          return `<div class="item" style="grid-template-columns:1fr auto"><div>${f.name}</div><div class="muted">${it.g||0} g</div></div>`;
-        }).join('') || `<div class="muted">—</div>`;
-        return `<div class="macro-variant-box"><div class="mv-title"><div class="name">${vv.name}</div></div><div class="list" style="max-height:none">${rows}</div></div>`;
+          return `<div class=\"item\" style=\"grid-template-columns:1fr auto\"><div>${f.name}</div><div class=\"muted\">${it.g||0} g</div></div>`;
+        }).join('') || `<div class=\"muted\">—</div>`;
+        return `<div class=\"macro-variant-box\"><div class=\"mv-title\"><div class=\"name\">${vv.name}</div></div><div class=\"list\" style=\"max-height:none\">${rows}</div></div>`;
       }).join('');
-      return `<div><div class="tag ${tag}">${title}</div>${blocks}</div>`;
+      return `<div><div class=\"tag ${tag}\">${title}</div>${blocks}</div>`;
     }
   }
 
   const rows = (mealVar.items[k]||[]).map(it=>{
     const f = state.foods.find(x=>x.id===it.foodId);
     if (!f) return '';
-    return `<div class="item" style="grid-template-columns:1fr auto"><div>${f.name}</div><div class="muted">${it.g||0} g</div></div>`;
-  }).join('') || `<div class="muted">—</div>`;
-  return `<div><div class="tag ${tag}">${title}</div><div class="list" style="max-height:none">${rows}</div></div>`;
+    return `<div class=\"item\" style=\"grid-template-columns:1fr auto\"><div>${f.name}</div><div class=\"muted\">${it.g||0} g</div></div>`;
+  }).join('') || `<div class=\"muted\">—</div>`;
+  return `<div><div class=\"tag ${tag}\">${title}</div><div class=\"list\" style=\"max-height:none\">${rows}</div></div>`;
 }
 
 // ---------- Toggle handlers ----------
