@@ -3,14 +3,707 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Suite Dieta & Palestra</title>
+  <title>Ricette - Suite Dieta & Palestra</title>
+  <style>
+    :root{
+      --bg:#0b1021;--panel:#0f172a;--card:#0b1220;--muted:#94a3b8;--text:#e5e7eb;
+      --pri:#22d3ee;--acc:#a78bfa;--ok:#34d399;--warn:#f59e0b;--danger:#ef4444;
+      --brd:rgba(255,255,255,.08)
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;background:linear-gradient(135deg,#0b1021,#111827 40%,#0b1021);color:var(--text)}
+    header{padding:16px;border-bottom:1px solid var(--brd);background:rgba(15,23,42,.7);backdrop-filter:blur(6px)}
+    .headerbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    header h1{margin:0;font-size:clamp(18px,3.6vw,26px)}
+    header p{margin:4px 0 0;color:var(--muted)}
+    .header-status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;padding:12px 14px}
+    .tab-btn{padding:10px 14px;border:1px solid var(--brd);border-radius:12px;background:#0b1220;color:var(--text);cursor:pointer;font-weight:700}
+    .tab-btn.active{background:linear-gradient(135deg,var(--pri),var(--acc));color:#0b1220;border:none}
+
+    .page{display:none;max-width:1200px;margin:0 auto;padding:14px}
+    .page.active{display:block}
+
+    .panel{background:rgba(2,6,23,.55);border:1px solid var(--brd);border-radius:14px;padding:12px}
+    .sec{margin-bottom:12px}
+    .sec h3{margin:0 0 8px;font-size:15px;color:#dbeafe}
+
+    input,select,button,textarea{border-radius:10px;border:1px solid var(--brd);background:#0b1220;color:var(--text);padding:8px 10px;outline:none;min-width:0}
+    input:focus,select:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(34,211,238,.18)}
+    textarea{min-height:120px;resize:vertical}
+    button{cursor:pointer;font-weight:700}
+    .btn{background:linear-gradient(135deg,var(--pri),var(--acc));border:none;color:#0b1220}
+    .secondary{background:#0b1220;color:var(--text);border:1px solid var(--brd)}
+    .danger{border-color:#b91c1c;color:#fee2e2}
+
+    .row{display:grid;gap:8px}
+    .two{grid-template-columns:1fr 1fr}
+    .three{grid-template-columns:repeat(3,1fr)}
+    .inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .right{justify-content:flex-end}
+
+    .badge{padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid var(--brd);background:#0b1220;color:#94a3b8}
+    .badge.ok{color:#10b981;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.35)}
+    .badge.warn{color:#f59e0b;background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35)}
+    .badge.err{color:#ef4444;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35)}
+    .badge.neu{color:#94a3b8;background:rgba(148,163,184,.10);border-color:rgba(255,255,255,.12)}
+
+    .hintbar{margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
+      background:linear-gradient(135deg,rgba(34,211,238,.12),rgba(167,139,250,.12));color:#e2e8f0;font-size:13px}
+
+    .list{display:grid;gap:8px;max-height:calc(100vh - 280px);overflow:auto;border:1px solid var(--brd);padding:8px;border-radius:12px;background:rgba(2,6,23,.3)}
+    .item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;border:1px solid var(--brd);border-radius:12px;background:rgba(11,18,32,.6)}
+    .item .meta{color:var(--muted);font-size:12px}
+    .chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--brd)}
+    .chip.tag{background:rgba(14,165,233,.12);color:#93c5fd;border-color:rgba(147,197,253,.35)}
+    .chip.fav{background:rgba(245,158,11,.12);color:#fcd34d;border-color:rgba(245,158,11,.35)}
+
+    @media (max-width:980px){
+      .two,.three{grid-template-columns:1fr}
+      .tabs{position:sticky;top:0;z-index:5;background:rgba(11,18,32,.9);backdrop-filter:blur(6px)}
+      .list{max-height:50vh}
+    }
+
+    /* Hide login controls (login only in Home) */
+    #page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn,
+    #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important;}
+  </style>
 </head>
 <body>
-  <h2>Suite Dieta & Palestra</h2>
-  <p>
-    <a href="./dieta/">Apri Dieta</a> •
-    <a href="./palestra/">Apri Palestra</a> •
-    <a href="./ricette/">Apri Ricette</a>
-  </p>
+<noscript style="padding:12px;display:block;background:#fee2e2;color:#111">Per usare questa app serve JavaScript attivo nel browser.</noscript>
+
+<header>
+  <div class="headerbar">
+    <div>
+      <h1>Ricette</h1>
+      <p>Gestione ricette personali • Ricerca • Import/Export • Sync</p>
+    </div>
+    <div class="header-status">
+      <span id="authBadge" class="badge neu">—</span>
+      <span id="syncBadge" class="badge neu">Sync: —</span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs noprint">
+  <button class="tab-btn" data-home="1" title="Torna alla Home">Home</button>
+  <button class="tab-btn active" data-tab="page-recipes">Ricette</button>
+  <button class="tab-btn" data-tab="page-editor">Editor</button>
+  <button class="tab-btn" data-tab="page-import">Import/Export</button>
+  <button class="tab-btn" data-tab="page-settings">Impostazioni</button>
+</nav>
+
+<section id="page-recipes" class="page active">
+  <div class="panel">
+    <div class="sec">
+      <h3>Elenco ricette</h3>
+      <div class="row two">
+        <input id="q" placeholder="Cerca per nome, tag, ingredienti…" />
+        <div class="inline right">
+          <button class="secondary" id="newBtn">+ Nuova</button>
+          <button class="secondary" id="dupBtn" title="Duplica ricetta selezionata">Duplica</button>
+          <button class="secondary danger" id="delBtn" title="Elimina ricetta selezionata">Elimina</button>
+        </div>
+      </div>
+      <div class="inline" style="margin-top:8px">
+        <label class="inline"><input type="checkbox" id="onlyFav"/> <span>Solo preferite</span></label>
+        <select id="tagFilter" style="min-width:220px">
+          <option value="">Filtro tag: (tutti)</option>
+        </select>
+        <span class="badge" id="countBadge">0</span>
+      </div>
+      <div id="list" class="list" style="margin-top:10px"></div>
+      <div class="hintbar" id="hint">Suggerimento: crea una ricetta, aggiungi tag (es. “colazione”, “bulk”, “veg”), ingredienti e passaggi.</div>
+    </div>
+  </div>
+</section>
+
+<section id="page-editor" class="page">
+  <div class="panel">
+    <div class="sec">
+      <h3>Editor ricetta</h3>
+      <div class="row two">
+        <input id="rTitle" placeholder="Titolo ricetta" />
+        <div class="inline right">
+          <label class="inline"><input type="checkbox" id="rFav"/> <span>Preferita</span></label>
+          <span class="badge" id="selId">—</span>
+        </div>
+      </div>
+      <div class="row three" style="margin-top:8px">
+        <input id="rTime" placeholder="Tempo (es. 20 min)" />
+        <input id="rServ" type="number" min="1" step="1" placeholder="Porzioni" />
+        <input id="rKcal" type="number" min="0" step="1" placeholder="Kcal (opzionale)" />
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="rTags" placeholder="Tag (separati da virgola) es: pranzo, bulk, veloce" />
+      </div>
+      <div class="row two" style="margin-top:8px">
+        <textarea id="rIngr" placeholder="Ingredienti (uno per riga)\n- 200g pollo\n- 80g riso\n- 10g olio"></textarea>
+        <textarea id="rSteps" placeholder="Procedura / passaggi (uno per riga)\n1) ...\n2) ..."></textarea>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <textarea id="rNotes" placeholder="Note (varianti, sostituzioni, link, ecc.)"></textarea>
+      </div>
+      <div class="inline right" style="margin-top:10px">
+        <button class="secondary" id="resetBtn">Reset</button>
+        <button class="btn" id="saveBtn">Salva</button>
+      </div>
+      <div class="hintbar" id="saveHint" style="display:none"></div>
+    </div>
+  </div>
+</section>
+
+<section id="page-import" class="page">
+  <div class="panel">
+    <div class="sec">
+      <h3>Import / Export</h3>
+      <div class="row two">
+        <button class="secondary" id="exportBtn">Esporta JSON</button>
+        <button class="secondary" id="importBtn">Importa JSON</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" />
+      </div>
+      <div class="hintbar">Formato export: lista di ricette. L’import unisce per id (se presente) o per titolo.</div>
+    </div>
+  </div>
+</section>
+
+<section id="page-settings" class="page">
+  <div class="panel">
+    <div class="sec">
+      <h3>Account & Sync</h3>
+      <div class="hintbar">Login/Logout disponibili solo nella <b>Home</b>. Qui vedi lo stato di sincronizzazione e i dettagli.</div>
+      <div id="syncDetails" class="muted" style="margin-top:6px"></div>
+      <div class="inline right" style="margin-top:8px">
+        <button class="secondary" id="forceSyncBtn" title="Forza sincronizzazione (upload/download)">Forza sync</button>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>Preferenze</h3>
+      <div class="row two">
+        <label class="inline"><input type="checkbox" id="uiCompact"/> <span>Vista compatta lista</span></label>
+        <label class="inline"><input type="checkbox" id="uiAutoSave" checked/> <span>Autosave mentre scrivo</span></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script type="module">
+  // ===== Firebase (Auth + Firestore) =====
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import {
+    getAuth,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    onSnapshot,
+    enableIndexedDbPersistence
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+  // Usa lo stesso progetto Firebase della Dieta
+  const firebaseConfig = {
+    apiKey: "AIzaSyDf5y-wlgT4gylL4d_cMQe_ik8s_S09VRc",
+    authDomain: "programma-dieta-952d7.firebaseapp.com",
+    projectId: "programma-dieta-952d7",
+    storageBucket: "programma-dieta-952d7.firebasestorage.app",
+    messagingSenderId: "16575395211",
+    appId: "1:16575395211:web:f96fe4db36fcc85cf96b8e",
+    measurementId: "G-17Q7WZDRQ0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  enableIndexedDbPersistence(db).catch(()=>{});
+
+  // ===== Utils =====
+  const $ = (sel)=>document.querySelector(sel);
+  const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
+  const now = ()=>Date.now();
+  const norm = (s)=>String(s||'').toLowerCase().trim();
+  const uniq = (arr)=>Array.from(new Set(arr));
+
+  // ===== State & Storage =====
+  const KEY = 'recipes-app-v1';
+  function seed(){
+    return {
+      _meta:{ updatedAt: 0 },
+      recipes: [],
+      ui:{ compact:false, autosave:true }
+    };
+  }
+  function load(){
+    try{ return JSON.parse(localStorage.getItem(KEY)) || null; }catch{ return null; }
+  }
+  let state = load() || seed();
+  function saveLocal(){
+    state._meta = state._meta || {};
+    state._meta.updatedAt = now();
+    localStorage.setItem(KEY, JSON.stringify(state));
+    scheduleRemoteSave();
+  }
+
+  // ===== Sync (stesso schema Dieta: users/{uid}/apps/recipes) =====
+  const remote = { uid:null, unsub:null, applying:false, timer:null };
+  let lastSyncAt = 0;
+
+  function userDocRef(uid){
+    return doc(db, 'users', uid, 'apps', 'recipes');
+  }
+
+  function setBadges({auth='neu', authText='—', sync='neu', syncText='Sync: —', details='' }={}){
+    $('#authBadge').className = 'badge ' + auth;
+    $('#authBadge').textContent = authText;
+    $('#syncBadge').className = 'badge ' + sync;
+    $('#syncBadge').textContent = syncText;
+    $('#syncDetails').textContent = details;
+  }
+
+  function setSyncState(type, msg){
+    const last = lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : '—';
+    setBadges({
+      auth: remote.uid ? 'ok':'neu',
+      authText: remote.uid ? ('Loggato') : ('Non loggato'),
+      sync: type || 'neu',
+      syncText: 'Sync: ' + (msg||'—'),
+      details: lastSyncAt ? ('Ultima sync: ' + last) : ''
+    });
+  }
+
+  async function pushToCloud(){
+    if (!remote.uid || remote.applying) return;
+    try{
+      setSyncState('warn','Salvataggio…');
+      await setDoc(userDocRef(remote.uid), { state }, { merge:true });
+      lastSyncAt = now();
+      setSyncState('ok','Salvato');
+    }catch(e){
+      console.error('[SYNC] push error', e);
+      setSyncState('err','Errore');
+      $('#syncDetails').textContent = e?.message || String(e);
+    }
+  }
+
+  function scheduleRemoteSave(){
+    if (!remote.uid || remote.applying) return;
+    clearTimeout(remote.timer);
+    remote.timer = setTimeout(()=>pushToCloud(), 600);
+  }
+
+  async function forceResync(){
+    if (!remote.uid) { alert('Fai login dalla Home.'); return; }
+    if (!navigator.onLine) { alert('Sei offline.'); return; }
+    const ref = userDocRef(remote.uid);
+    try{
+      setSyncState('warn','Risincronizzo…');
+      const snap = await getDoc(ref);
+      const localTs = state?._meta?.updatedAt || 0;
+      if (!snap.exists()){
+        await pushToCloud();
+        return;
+      }
+      const cloudState = snap.data().state;
+      const cloudTs = cloudState?._meta?.updatedAt || 0;
+      if (cloudTs > localTs){
+        remote.applying = true;
+        state = cloudState;
+        localStorage.setItem(KEY, JSON.stringify(state));
+        remote.applying = false;
+        lastSyncAt = now();
+        setSyncState('ok','Scaricato');
+        renderAll();
+      } else if (localTs > cloudTs){
+        await pushToCloud();
+      } else {
+        lastSyncAt = now();
+        setSyncState('ok','In sync');
+      }
+    } catch(e){
+      console.error('[SYNC] forceResync error', e);
+      setSyncState('err','Errore');
+      $('#syncDetails').textContent = e?.message || String(e);
+    }
+  }
+
+  async function startCloud(uid){
+    remote.uid = uid;
+    const ref = userDocRef(uid);
+
+    // Prima lettura
+    const snap = await getDoc(ref);
+    const localTs = state?._meta?.updatedAt || 0;
+    if (snap.exists()){
+      const cloudState = snap.data().state;
+      const cloudTs = cloudState?._meta?.updatedAt || 0;
+      if (cloudTs > localTs){
+        remote.applying = true;
+        state = cloudState;
+        localStorage.setItem(KEY, JSON.stringify(state));
+        remote.applying = false;
+        lastSyncAt = now();
+        setSyncState('ok','Ripristinato');
+      } else if (localTs > cloudTs){
+        await pushToCloud();
+      } else {
+        setSyncState('ok','In sync');
+      }
+    } else {
+      await pushToCloud();
+    }
+
+    // Listener realtime
+    if (remote.unsub) remote.unsub();
+    remote.unsub = onSnapshot(ref, (docSnap)=>{
+      if (!docSnap.exists()) return;
+      const cloudState = docSnap.data().state;
+      const cloudTs = cloudState?._meta?.updatedAt || 0;
+      const localTs2 = state?._meta?.updatedAt || 0;
+      if (cloudTs > localTs2){
+        remote.applying = true;
+        state = cloudState;
+        localStorage.setItem(KEY, JSON.stringify(state));
+        remote.applying = false;
+        lastSyncAt = now();
+        setSyncState('ok','Aggiornato');
+        renderAll();
+      }
+    }, (err)=>{
+      console.error('[SYNC] onSnapshot error', err);
+      setSyncState('err','Listener');
+      $('#syncDetails').textContent = err?.message || String(err);
+    });
+  }
+
+  // ===== UI: Tabs =====
+  const tabButtons = $$('.tab-btn');
+  function setTab(id){
+    $$('.page').forEach(p=>p.classList.toggle('active', p.id===id));
+    tabButtons.forEach(b=>b.classList.toggle('active', b.dataset.tab===id));
+    localStorage.setItem('recipes-tab', id);
+  }
+  tabButtons.forEach(b=>b.addEventListener('click', ()=>{
+    if (b.dataset.home==='1'){ window.location.href = '../'; return; }
+    setTab(b.dataset.tab);
+  }));
+  const lastTab = localStorage.getItem('recipes-tab');
+  if (lastTab) setTab(lastTab);
+
+  // ===== Recipes model =====
+  function makeRecipe(title='Nuova ricetta'){
+    return {
+      id: crypto.randomUUID(),
+      title,
+      fav:false,
+      time:'',
+      servings:1,
+      kcal:null,
+      tags:[],
+      ingredients:[],
+      steps:[],
+      notes:'',
+      updatedAt: now()
+    };
+  }
+
+  let selectedId = null;
+  function current(){
+    return state.recipes.find(r=>r.id===selectedId) || null;
+  }
+
+  // ===== Rendering list =====
+  function recipeMatches(r, q){
+    if (!q) return true;
+    const blob = [r.title, (r.tags||[]).join(' '), (r.ingredients||[]).join(' '), (r.steps||[]).join(' '), r.notes].join(' ');
+    return norm(blob).includes(norm(q));
+  }
+
+  function renderTagFilter(){
+    const all = uniq(state.recipes.flatMap(r=>r.tags||[]).map(t=>t.trim()).filter(Boolean)).sort((a,b)=>a.localeCompare(b));
+    const sel = $('#tagFilter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Filtro tag: (tutti)</option>' + all.map(t=>`<option value="${t}">${t}</option>`).join('');
+    if (all.includes(cur)) sel.value = cur;
+  }
+
+  function renderList(){
+    const q = $('#q').value;
+    const onlyFav = $('#onlyFav').checked;
+    const tag = $('#tagFilter').value;
+
+    const arr = state.recipes
+      .filter(r=>!onlyFav || !!r.fav)
+      .filter(r=>!tag || (r.tags||[]).includes(tag))
+      .filter(r=>recipeMatches(r,q))
+      .sort((a,b)=> (b.updatedAt||0) - (a.updatedAt||0));
+
+    $('#countBadge').textContent = String(arr.length);
+
+    const list = $('#list');
+    list.innerHTML = arr.map(r=>{
+      const chips = [
+        r.fav ? '<span class="chip fav">★</span>' : '',
+        ...(r.tags||[]).slice(0,4).map(t=>`<span class="chip tag">${t}</span>`)
+      ].join(' ');
+      const meta = [r.time && `⏱ ${r.time}`, r.servings && `🍽 ${r.servings}`, (r.kcal!=null && r.kcal!=='') && `🔥 ${r.kcal} kcal`].filter(Boolean).join(' • ');
+      const active = r.id===selectedId ? 'style="outline:2px solid rgba(34,211,238,.55)"' : '';
+      return `
+        <div class="item" data-id="${r.id}" ${active}>
+          <div>
+            <div style="font-weight:800">${r.title}</div>
+            <div class="meta">${meta || '—'}</div>
+            <div class="inline" style="margin-top:6px">${chips}</div>
+          </div>
+          <div class="inline right">
+            <button class="secondary" data-act="open">Apri</button>
+          </div>
+        </div>
+      `;
+    }).join('') || '<div class="muted" style="padding:8px">Nessuna ricetta trovata.</div>';
+
+    list.querySelectorAll('.item').forEach(el=>{
+      el.addEventListener('click', (e)=>{
+        const id = el.dataset.id;
+        selectRecipe(id);
+      });
+      el.querySelector('[data-act="open"]').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const id = el.dataset.id;
+        selectRecipe(id);
+        setTab('page-editor');
+      });
+    });
+
+    renderTagFilter();
+  }
+
+  function fillEditor(r){
+    $('#selId').textContent = r ? r.id.slice(0,8) : '—';
+    $('#rTitle').value = r?.title || '';
+    $('#rFav').checked = !!r?.fav;
+    $('#rTime').value = r?.time || '';
+    $('#rServ').value = r?.servings || 1;
+    $('#rKcal').value = (r?.kcal ?? '') === null ? '' : (r?.kcal ?? '');
+    $('#rTags').value = (r?.tags||[]).join(', ');
+    $('#rIngr').value = (r?.ingredients||[]).join('\n');
+    $('#rSteps').value = (r?.steps||[]).join('\n');
+    $('#rNotes').value = r?.notes || '';
+  }
+
+  function selectRecipe(id){
+    selectedId = id;
+    const r = current();
+    fillEditor(r);
+    renderList();
+  }
+
+  function resetEditor(){
+    selectedId = null;
+    fillEditor(null);
+    $('#saveHint').style.display='none';
+    renderList();
+  }
+
+  function readEditor(){
+    const id = selectedId || crypto.randomUUID();
+    const title = $('#rTitle').value.trim() || 'Senza titolo';
+    const fav = $('#rFav').checked;
+    const time = $('#rTime').value.trim();
+    const servings = Math.max(1, parseInt($('#rServ').value||'1')||1);
+    const kcalRaw = $('#rKcal').value;
+    const kcal = kcalRaw==='' ? null : Math.max(0, parseInt(kcalRaw)||0);
+    const tags = uniq($('#rTags').value.split(',').map(t=>t.trim()).filter(Boolean));
+    const ingredients = $('#rIngr').value.split('\n').map(x=>x.trim()).filter(Boolean);
+    const steps = $('#rSteps').value.split('\n').map(x=>x.trim()).filter(Boolean);
+    const notes = $('#rNotes').value;
+
+    return { id, title, fav, time, servings, kcal, tags, ingredients, steps, notes, updatedAt: now() };
+  }
+
+  function saveEditor(){
+    const rec = readEditor();
+    const idx = state.recipes.findIndex(r=>r.id===rec.id);
+    if (idx>=0) state.recipes[idx] = rec; else state.recipes.push(rec);
+    selectedId = rec.id;
+    saveLocal();
+    $('#saveHint').style.display='block';
+    $('#saveHint').textContent = 'Salvato ✅';
+    setTimeout(()=>$('#saveHint').style.display='none', 900);
+    renderAll();
+  }
+
+  function duplicateSelected(){
+    const r = current();
+    if (!r){ alert('Seleziona una ricetta.'); return; }
+    const copy = JSON.parse(JSON.stringify(r));
+    copy.id = crypto.randomUUID();
+    copy.title = r.title + ' (copia)';
+    copy.updatedAt = now();
+    state.recipes.push(copy);
+    selectedId = copy.id;
+    saveLocal();
+    renderAll();
+    setTab('page-editor');
+  }
+
+  function deleteSelected(){
+    const r = current();
+    if (!r){ alert('Seleziona una ricetta.'); return; }
+    if (!confirm('Eliminare la ricetta selezionata?')) return;
+    state.recipes = state.recipes.filter(x=>x.id!==r.id);
+    selectedId = null;
+    saveLocal();
+    renderAll();
+  }
+
+  // ===== Import/Export =====
+  function exportJSON(){
+    const blob = new Blob([JSON.stringify(state.recipes, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ricette.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importArray(arr){
+    if (!Array.isArray(arr)) throw new Error('Formato non valido');
+    arr.forEach(x=>{
+      if (!x || !x.title) return;
+      // merge by id, fallback by title
+      const byId = x.id ? state.recipes.find(r=>r.id===x.id) : null;
+      const byTitle = state.recipes.find(r=>norm(r.title)===norm(x.title));
+      const r = byId || byTitle;
+      const merged = {
+        id: r?.id || x.id || crypto.randomUUID(),
+        title: String(x.title||r?.title||'Senza titolo'),
+        fav: !!(x.fav ?? r?.fav),
+        time: String(x.time ?? r?.time ?? ''),
+        servings: Math.max(1, parseInt(x.servings ?? r?.servings ?? 1)||1),
+        kcal: (x.kcal===null || x.kcal===undefined) ? (r?.kcal ?? null) : (parseInt(x.kcal)||0),
+        tags: uniq((x.tags || r?.tags || []).map(t=>String(t).trim()).filter(Boolean)),
+        ingredients: (x.ingredients || r?.ingredients || []).map(s=>String(s).trim()).filter(Boolean),
+        steps: (x.steps || r?.steps || []).map(s=>String(s).trim()).filter(Boolean),
+        notes: String(x.notes ?? r?.notes ?? ''),
+        updatedAt: Math.max(x.updatedAt||0, r?.updatedAt||0, now())
+      };
+      if (r){ Object.assign(r, merged); }
+      else { state.recipes.push(merged); }
+    });
+    saveLocal();
+    renderAll();
+  }
+
+  // ===== Preferences =====
+  function renderPrefs(){
+    state.ui = state.ui || {compact:false, autosave:true};
+    $('#uiCompact').checked = !!state.ui.compact;
+    $('#uiAutoSave').checked = state.ui.autosave !== false;
+
+    document.body.classList.toggle('compact', !!state.ui.compact);
+  }
+
+  // ===== Events =====
+  $('#q').addEventListener('input', renderList);
+  $('#onlyFav').addEventListener('change', renderList);
+  $('#tagFilter').addEventListener('change', renderList);
+
+  $('#newBtn').addEventListener('click', ()=>{
+    const r = makeRecipe('Nuova ricetta');
+    state.recipes.push(r);
+    selectedId = r.id;
+    saveLocal();
+    renderAll();
+    setTab('page-editor');
+  });
+  $('#dupBtn').addEventListener('click', duplicateSelected);
+  $('#delBtn').addEventListener('click', deleteSelected);
+
+  $('#resetBtn').addEventListener('click', resetEditor);
+  $('#saveBtn').addEventListener('click', saveEditor);
+
+  // Autosave
+  ['rTitle','rFav','rTime','rServ','rKcal','rTags','rIngr','rSteps','rNotes'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evt = (el.tagName==='INPUT' && el.type==='checkbox') ? 'change' : 'input';
+    el.addEventListener(evt, ()=>{
+      if (!($('#uiAutoSave').checked)) return;
+      if (!selectedId && !$('#rTitle').value.trim()) return;
+      // salva in debounce
+      debounceSave();
+    });
+  });
+
+  let saveDeb=null;
+  function debounceSave(){
+    clearTimeout(saveDeb);
+    saveDeb = setTimeout(()=>{
+      // se nessuna selezione e titolato, crea
+      if (!selectedId && $('#rTitle').value.trim()){
+        const r = makeRecipe($('#rTitle').value.trim());
+        state.recipes.push(r);
+        selectedId = r.id;
+      }
+      if (selectedId) saveEditor();
+    }, 500);
+  }
+
+  $('#exportBtn').addEventListener('click', exportJSON);
+  $('#importBtn').addEventListener('click', ()=>$('#importFile').click());
+  $('#importFile').addEventListener('change', (e)=>{
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = (ev)=>{
+      try{
+        const data = JSON.parse(ev.target.result);
+        importArray(data);
+      }catch(err){
+        alert('Import fallito: ' + err.message);
+      }
+    };
+    r.readAsText(f,'utf-8');
+    e.target.value='';
+  });
+
+  $('#forceSyncBtn').addEventListener('click', forceResync);
+  $('#uiCompact').addEventListener('change', ()=>{ state.ui.compact = !!$('#uiCompact').checked; saveLocal(); renderPrefs(); });
+  $('#uiAutoSave').addEventListener('change', ()=>{ state.ui.autosave = !!$('#uiAutoSave').checked; saveLocal(); });
+
+  function renderAll(){
+    renderPrefs();
+    renderList();
+    const r = current();
+    if (r) fillEditor(r);
+  }
+
+  // ===== Auth state =====
+  onAuthStateChanged(auth, async (user)=>{
+    if (user){
+      setBadges({auth:'ok', authText:'Loggato', sync:'warn', syncText:'Sync: Connessione…'});
+      await startCloud(user.uid);
+      renderAll();
+    } else {
+      if (remote.unsub) remote.unsub();
+      remote.uid = null;
+      setBadges({auth:'neu', authText:'Non loggato', sync:'neu', syncText:'Sync: —'});
+      renderAll();
+    }
+  });
+
+  // Init UI
+  ensureState();
+  function ensureState(){
+    state = state || seed();
+    state.recipes = Array.isArray(state.recipes) ? state.recipes : [];
+    state.ui = state.ui || {compact:false, autosave:true};
+  }
+  renderAll();
+
+</script>
 </body>
 </html>
