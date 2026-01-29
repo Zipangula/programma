@@ -48,7 +48,7 @@
   }
   input:focus,select:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(34,211,238,.18)}
 /* Checkbox layout fix */
-input[type="checkbox"]{width:auto !important; min-width:auto !important; padding:0 !important; border-radius:4px !important; border:1px solid var(--brd) !important; background:#0b1220 !important;}
+input[type="checkbox"]{width:auto !important;min-width:auto !important;padding:0 !important;margin:0 !important;accent-color:var(--pri);}
 label.inline{align-items:center;}
 
   button{cursor:pointer;font-weight:600}
@@ -147,6 +147,8 @@ label.inline{align-items:center;}
     .panel{border:none;background:#fff}
     .meal{page-break-inside:avoid}
   }
+
+#page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
 </style>
 </head>
 <body>
@@ -790,6 +792,8 @@ if (lastTab) setTab(lastTab);
  if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
  if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
   if (!state.ui.preview) state.ui.preview = {showC:true,showP:true,showF:true,showTargets:true};
+ // normalizza foods esistenti
+ if (Array.isArray(state.foods)) state.foods.forEach(f=>{ if (typeof f.groupLocked !== 'boolean') f.groupLocked = false; });
   if (!state.foodsVersion || state.foodsVersion !== CURATED_VERSION){
     state.foods = CURATED_FOODS.map(f=>({ ...f, groupLocked: !!f.groupLocked }));
     state.foodsVersion = CURATED_VERSION;
@@ -1199,7 +1203,7 @@ function renderPlanner(){
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
     ensureItemDefaults(m);
-    if (state.ui?.enableMacroVariants) ensureMacroVariants(m);
+ if (state.ui?.enableMacroVariants) ensureMacroVariants(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1472,19 +1476,14 @@ function clearFoodForm(){
 function toggleInlineFoodEditor(id){
   const host = document.getElementById('foodEdit-' + id);
   if (!host) return;
-  // Chiudi altri editor aperti
+  // chiudi altri editor aperti
   document.querySelectorAll('.food-inline-editor').forEach(el=>{ if (el!==host) { el.classList.add('hidden'); el.innerHTML=''; } });
   if (!host.classList.contains('hidden')){ host.classList.add('hidden'); host.innerHTML=''; return; }
   const f = state.foods.find(x=>x.id===id);
   if (!f) return;
-  host.classList.remove('hidden');
-  host.innerHTML = renderInlineFoodEditorHTML(f);
-  bindInlineFoodEditorEvents(host, f.id);
-}
-
-function renderInlineFoodEditorHTML(f){
   const gm = (f.groupLocked ? (f.group||'auto') : 'auto');
-  return `
+  host.classList.remove('hidden');
+  host.innerHTML = `
     <div class="row three">
       <input data-if="name" value="${f.name}" placeholder="Nome"/>
       <input data-if="kcal" type="number" step="0.1" value="${f.kcal}" placeholder="Energia (kcal/100g)"/>
@@ -1505,12 +1504,10 @@ function renderInlineFoodEditorHTML(f){
       <button class="btn" data-if-btn="save">Salva</button>
     </div>
   `;
-}
 
-function bindInlineFoodEditorEvents(host, id){
   host.querySelector('[data-if-btn="cancel"]')?.addEventListener('click', ()=>{ host.classList.add('hidden'); host.innerHTML=''; });
   host.querySelector('[data-if-btn="save"]')?.addEventListener('click', ()=>{
-    const f = state.foods.find(x=>x.id===id); if (!f) return;
+    const f2 = state.foods.find(x=>x.id===id); if (!f2) return;
     const name = host.querySelector('[data-if="name"]').value.trim();
     if (!name){ alert('Inserisci il nome.'); return; }
     const kcal = parse(host.querySelector('[data-if="kcal"]').value);
@@ -1520,7 +1517,7 @@ function bindInlineFoodEditorEvents(host, id){
     const mode = host.querySelector('[data-if="group"]').value || 'auto';
     const groupLocked = (mode !== 'auto');
     const group = groupLocked ? mode : dominant(c,p,fat);
-    Object.assign(f, { name, kcal, c, p, fat, group, groupLocked });
+    Object.assign(f2, { name, kcal, c, p, fat, group, groupLocked });
     save();
     // chiudi editor e aggiorna lista
     host.classList.add('hidden');
@@ -1528,6 +1525,7 @@ function bindInlineFoodEditorEvents(host, id){
     renderFoods();
   });
 }
+
 function editFood(id){
   const f = state.foods.find(x=>x.id===id); if (!f) return;
   els.fName.value = f.name; els.fKcal.value=f.kcal; els.fCarb.value=f.c; els.fProt.value=f.p; els.fFat.value=f.fat;
@@ -1976,7 +1974,9 @@ function exportPDF(){
       .v4{background:#fff4e5;color:#b45309;border-color:#bcd}
       .v5{background:#e6fffb;color:#0f766e;border-color:#bcd}
       .varbox{border:1px dashed #ccc;border-radius:10px;padding:8px;margin:6px 0}
-    </style>`;
+    
+#page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
+</style>`;
   let html = `<h2>Piano pasti - ${p.name}</h2>`;
 
   p.meals.forEach((m,mi)=>{
