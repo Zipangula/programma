@@ -47,16 +47,6 @@
     padding:8px 10px;outline:none;min-width:0
   }
   input:focus,select:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(34,211,238,.18)}
-/* Checkbox layout fix */
-input[type="checkbox"]{width:auto !important;min-width:auto !important;padding:0 !important;margin:0 !important;accent-color:var(--pri);}
-label.inline{align-items:center;}
-
-/* Inline editor in food list */
-.food-inline-editor{margin-top:8px;padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(11,18,32,.6)}
-.food-inline-editor .row{display:grid;gap:8px}
-.food-inline-editor .row.three{grid-template-columns:repeat(3,1fr)}
-.food-inline-editor .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-
   button{cursor:pointer;font-weight:600}
   .btn{background:linear-gradient(135deg,var(--pri),var(--acc));border:none;color:#0b1220}
   .secondary{background:#0b1220;color:var(--text);border:1px solid var(--brd)}
@@ -155,6 +145,15 @@ label.inline{align-items:center;}
   }
 
 #page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
+
+/* === PATCH: checkbox allineati + inline editor === */
+label.inline{display:flex;align-items:center;gap:8px}
+label.inline input[type="checkbox"]{width:auto;min-width:auto;padding:0;margin:0;accent-color:var(--pri)}
+.food-inline-editor{margin-top:8px;padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(11,18,32,.6)}
+.food-inline-editor .row{display:grid;gap:8px}
+.food-inline-editor .row.three{grid-template-columns:repeat(3,1fr)}
+.food-inline-editor .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
 </style>
 </head>
 <body>
@@ -171,7 +170,6 @@ label.inline{align-items:center;}
   <div class="header-status">
    <span id="authBadge" class="badge neu"></span>
    <span id="syncBadge" class="badge neu">Sync: —</span>
- <span id="buildBadge" class="badge neu">Build: 2026-01-29 r2</span>
   </div>
  </div>
 </header>
@@ -202,8 +200,7 @@ label.inline{align-items:center;}
 
     <div class="sec">
       <h3>Calorie per macro</h3>
-      <div id="foodEdit-${f.id}" class="food-inline-editor hidden"></div>
- <div class="inline">
+      <div class="inline">
         <span class="tag c">Carbo 4 kcal/g</span>
         <span class="tag p">Proteine 4 kcal/g</span>
         <span class="tag f">Grassi 9 kcal/g</span>
@@ -665,7 +662,7 @@ async function startCloudSync(uid){
 
 function F(name,kcal,c,p,fat){
   const id = crypto.randomUUID();
-  return {id,name,kcal,c,p,fat,group:dominant(c,p,fat), groupLocked:false};
+  return {id,name,kcal,c,p,fat,group:dominant(c,p,fat)};
 }
 const CURATED_VERSION = '1.2';
 const CURATED_FOODS = [
@@ -719,7 +716,7 @@ function seed(){
     foodsVersion: null,
     profiles:[profile],
     currentProfileId: profile.id,
-    ui:{ showHints:true, foodsCollapsed:{c:false,p:false,f:false}, snapManual5:false, showAllFoods:false, enableMacroVariants:false, preview:{showC:true,showP:true,showF:true,showTargets:true} }
+    ui:{ showHints:true, foodsCollapsed:{c:false,p:false,f:false}, snapManual5:false, preview:{showC:true,showP:true,showF:true,showTargets:true} }
   };
 }
 function currentProfile(){ return state.profiles.find(p=>p.id===state.currentProfileId); }
@@ -746,13 +743,11 @@ const els = {
   resetFactorsBtn: $('#resetFactorsBtn'), factorFieldHint: $('#factorFieldHint'),
   // Interfaccia/Anteprima (globali)
   snapManual5: $('#snapManual5'),
- toggleAllFoods: $('#toggleAllFoods'),
- toggleMacroVariants: $('#toggleMacroVariants'),
   showColC: $('#showColC'), showColP: $('#showColP'), showColF: $('#showColF'), showTargets: $('#showTargets'),
   // Foods
   foodSearch: $('#foodSearch'),
   fName: $('#fName'), fKcal: $('#fKcal'), fCarb: $('#fCarb'), fProt: $('#fProt'),
-  fFat: $('#fFat'), fGroupMode: $('#fGroupMode'), addFoodBtn: $('#addFoodBtn'),
+  fFat: $('#fFat'), addFoodBtn: $('#addFoodBtn'),
   foodsGroups: $('#foodsGroups'), exportFoodsBtn: $('#exportFoodsBtn'), importFoodsBtn: $('#importFoodsBtn'),
   foodsFile: $('#foodsFile'),
   collapseAllBtn: $('#collapseAllBtn'), expandAllBtn: $('#expandAllBtn'),
@@ -797,12 +792,9 @@ if (lastTab) setTab(lastTab);
   if (typeof state.ui.showHints !== 'boolean') state.ui.showHints = true;
   if (!state.ui.foodsCollapsed) state.ui.foodsCollapsed = {c:false,p:false,f:false};
   if (typeof state.ui.snapManual5 !== 'boolean') state.ui.snapManual5 = false;
- if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
- if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
- if (Array.isArray(state.foods)) state.foods.forEach(f=>{ if (typeof f.groupLocked !== 'boolean') f.groupLocked = false; });
   if (!state.ui.preview) state.ui.preview = {showC:true,showP:true,showF:true,showTargets:true};
   if (!state.foodsVersion || state.foodsVersion !== CURATED_VERSION){
-    state.foods = CURATED_FOODS.map(f=>({ ...f, groupLocked: !!f.groupLocked }));
+    state.foods = CURATED_FOODS.slice();
     state.foodsVersion = CURATED_VERSION;
     save();
   }
@@ -816,7 +808,7 @@ function foodItemHTML(f){
       <div>
         <div style="font-weight:600">${f.name} <span class="tag ${g}">${g.toUpperCase()}</span></div>
         <div class="meta">
-          ${fmt0(f.kcal)} kcal - <span class="tag c">C</span> ${fmt0(f.c)} g - <span class="tag p">P</span> ${fmt0(f.p)} g - <span class="tag f">G</span> ${fmt0(f.fat)} g (per 100 g)${f.groupLocked ? ` <span class="badge warn" title="Gruppo forzato manualmente">LOCK</span>` : ``}
+          ${fmt0(f.kcal)} kcal - <span class="tag c">C</span> ${fmt0(f.c)} g - <span class="tag p">P</span> ${fmt0(f.p)} g - <span class="tag f">G</span> ${fmt0(f.fat)} g (per 100 g)
         </div>
       </div>
       <div class="inline">
@@ -880,7 +872,7 @@ els.foodsGroups.addEventListener('click', e=>{
   const btn = e.target.closest('button[data-act]');
   if (btn){
     const id = btn.dataset.id;
-    if (btn.dataset.act==='edit') toggleInlineFoodEditor(id);
+    if (btn.dataset.act==='edit') editFood(id);
     else if (btn.dataset.act==='del') delFood(id);
     return;
   }
@@ -906,8 +898,7 @@ const FOOD_FIELD_META = {
   fKcal:{label:'Energia', unit:'kcal per 100 g'},
   fCarb:{label:'Carboidrati', unit:'g per 100 g'},
   fProt:{label:'Proteine', unit:'g per 100 g'},
-  fFat :{label:'Grassi', unit:'g per 100 g'},
- fGroupMode:{label:'Gruppo', unit:'Auto (dominante) oppure manuale (C/P/G)'}
+  fFat :{label:'Grassi', unit:'g per 100 g'}
 };
 function showFoodFieldHint(target){
   const meta = FOOD_FIELD_META[target.id];
@@ -917,9 +908,7 @@ function showFoodFieldHint(target){
 }
 function updateFoodPreview(){
   const c = parse(els.fCarb.value), p = parse(els.fProt.value), f = parse(els.fFat.value);
-  let dom = dominant(c,p,f);
- const gm = (els.fGroupMode?.value || 'auto');
- if (gm !== 'auto') dom = gm;
+  const dom = dominant(c,p,f);
   els.foodDominant.className = 'tag ' + (dom || '');
   els.foodDominant.textContent = dom==='c' ? 'CARBOIDRATI' : dom==='p' ? 'PROTEINE' : dom==='f' ? 'GRASSI' : '-';
   els.foodMacroLine.textContent = `C ${c} g - P ${p} g - G ${f} g`;
@@ -931,7 +920,7 @@ Object.keys(FOOD_FIELD_META).forEach(id=>{
   inp.addEventListener('focus', e=> showFoodFieldHint(e.target));
   inp.addEventListener('input', e=> { showFoodFieldHint(e.target); updateFoodPreview(); });
 });
-['fCarb','fProt','fFat','fKcal','fGroupMode'].forEach(id=> els[id]?.addEventListener('input', updateFoodPreview));
+['fCarb','fProt','fFat','fKcal'].forEach(id=> els[id]?.addEventListener('input', updateFoodPreview));
 
 /* ========= Rounding multipli di 5g ========= */
 function roundTo5WithDir(gramsExact){
@@ -976,7 +965,6 @@ function syncActiveVariant(mealIdx){
   v.items = cloneItems(m.items);
   save();
   renderPreview();
- if (state.ui?.enableMacroVariants){ ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k)); }
 }
 function switchVariant(mealIdx, varId){
   const p = currentProfile(), m = p.meals[mealIdx];
@@ -1011,105 +999,9 @@ function deleteVariant(mealIdx){
 }
 
 /* Macro box */
-
-// ===== Varianti per macronutrienti (opzionale) =====
-function ensureMacroVariants(m){
-  if (!m.macroVariants) m.macroVariants = {c:null,p:null,f:null};
-  ['c','p','f'].forEach(k=>{
-    let mv = m.macroVariants[k];
-    if (!mv || !Array.isArray(mv.variants) || !mv.variants.length){
-      const id = crypto.randomUUID();
-      mv = { activeId: id, variants: [{ id, name: 'Base', items: (m.items?.[k]||[]).map(i=>({...i})) }] };
-      m.macroVariants[k] = mv;
-    }
-    if (!mv.activeId) mv.activeId = mv.variants[0].id;
-    if (!mv.variants.some(v=>v.id===mv.activeId)) mv.activeId = mv.variants[0].id;
-  });
-}
-function syncActiveMacroVar(mealIdx,k){
-  const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
-  const v = mv.variants.find(x=>x.id===mv.activeId);
-  if (!v) return;
-  v.items = (m.items?.[k]||[]).map(i=>({...i}));
-}
-function buildMacroVarUI(m, mealIdx, k){
-  if (!state.ui?.enableMacroVariants) return '';
-  ensureMacroVariants(m);
-  const mv = m.macroVariants[k];
-  const opts = mv.variants.map(v=>`<option value="${v.id}" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
-  return `
-    <span class="muted">Variante</span>
-    <select data-role="macroVarSelect" data-meal="${mealIdx}" data-k="${k}" style="width:auto; min-width:120px">${opts}</select>
-    <button class="secondary" data-role="macroVarNew" data-meal="${mealIdx}" data-k="${k}" title="Nuova variante">+</button>
-    <button class="secondary" data-role="macroVarRen" data-meal="${mealIdx}" data-k="${k}" title="Rinomina variante">R</button>
-    <button class="secondary danger" data-role="macroVarDel" data-meal="${mealIdx}" data-k="${k}" title="Elimina variante">×</button>
-  `;
-}
-function switchMacroVar(mealIdx,k,varId){
-  const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
-  syncActiveMacroVar(mealIdx,k);
-  if (!mv.variants.some(v=>v.id===varId)) return;
-  mv.activeId = varId;
-  const v = mv.variants.find(x=>x.id===varId);
-  m.items[k] = (v.items||[]).map(i=>({...i}));
-  syncActiveVariant(mealIdx);
-  save();
-  renderPlanner();
-}
-function newMacroVar(mealIdx,k){
-  const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
-  syncActiveMacroVar(mealIdx,k);
-  const label = (k==='c'?'Carbo':'p'?'Proteine':'Grassi');
-  const name = prompt('Nome variante per ' + label + ':', 'Variante ' + (mv.variants.length+1));
-  if (!name) return;
-  const id = crypto.randomUUID();
-  mv.variants.push({id, name, items: (m.items[k]||[]).map(i=>({...i}))});
-  mv.activeId = id;
-  save();
-  renderPlanner();
-}
-function renameMacroVar(mealIdx,k){
-  const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
-  const v = mv.variants.find(x=>x.id===mv.activeId) || mv.variants[0];
-  const name = prompt('Nuovo nome variante:', v.name);
-  if (!name) return;
-  v.name = name;
-  save();
-  renderPlanner();
-}
-function deleteMacroVar(mealIdx,k){
-  const p=currentProfile(), m=p.meals[mealIdx];
-  ensureMacroVariants(m);
-  const mv=m.macroVariants[k];
-  if (mv.variants.length<=1){ alert('Deve esistere almeno una variante.'); return; }
-  if (!confirm('Eliminare la variante attiva?')) return;
-  const idx = mv.variants.findIndex(v=>v.id===mv.activeId);
-  mv.variants.splice(idx,1);
-  mv.activeId = mv.variants[0].id;
-  const v = mv.variants[0];
-  m.items[k] = (v.items||[]).map(i=>({...i}));
-  syncActiveVariant(mealIdx);
-  save();
-  renderPlanner();
-}
-
 function macroBox(k,label,idx,m){
- const mvUI = buildMacroVarUI(m, idx, k);
-  const listFoods = (state.ui?.showAllFoods) ? state.foods.slice() : state.foods.filter(x=>x.group===k);
- const opts = listFoods
-  .sort((a,b)=>a.name.localeCompare(b.name))
-  .map(f=>{
-    const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
-    return `<option value="${f.id}">${f.name}${badge}</option>`;
-  }).join('');
+  const opts = state.foods.filter(x=>x.group===k).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
   const items = m.items[k].map(it=>{
     const f = state.foods.find(x=>x.id===it.foodId);
     if (!f) return '';
@@ -1214,7 +1106,6 @@ function renderPlanner(){
   const cont = els.mealsContainer; cont.innerHTML='';
   p.meals.forEach((m,idx)=>{
     ensureItemDefaults(m);
- if (state.ui?.enableMacroVariants) ensureMacroVariants(m);
     const kcalTotal = m.macros.c*KCAL_C + m.macros.p*KCAL_P + m.macros.f*KCAL_F;
     const variantsSelect = `
       <select data-role="variantSelect" data-meal="${idx}">
@@ -1469,74 +1360,16 @@ function addFoodFromForm(){
   const name = els.fName.value.trim(); if(!name){ els.fName.focus(); return; }
   const kcal = parse(els.fKcal.value), c=parse(els.fCarb.value), p=parse(els.fProt.value), fat=parse(els.fFat.value);
   let id = els.addFoodBtn.dataset.editingId || crypto.randomUUID();
-  const mode = (els.fGroupMode?.value || 'auto');
- const groupLocked = (mode !== 'auto');
- const group = groupLocked ? mode : dominant(c,p,fat);
+  const group = dominant(c,p,fat);
   const exists = state.foods.find(x=>x.id===id);
-  const entry = {id,name,kcal,c,p,fat,group,groupLocked};
+  const entry = {id,name,kcal,c,p,fat,group};
   if (exists){ Object.assign(exists, entry); } else { state.foods.push(entry); }
   clearFoodForm(); save(); renderFoods(); updateFoodPreview();
 }
 function clearFoodForm(){
   ['fName','fKcal','fCarb','fProt','fFat'].forEach(id=>els[id].value='');
- if (els.fGroupMode) els.fGroupMode.value='auto';
   els.addFoodBtn.textContent='Aggiungi/Salva'; delete els.addFoodBtn.dataset.editingId;
 }
-
-// ===== Inline editor (Alimenti) =====
-function toggleInlineFoodEditor(id){
-  const host = document.getElementById('foodEdit-' + id);
-  if (!host) return;
-  // chiudi altri editor aperti
-  document.querySelectorAll('.food-inline-editor').forEach(el=>{ if (el!==host) { el.classList.add('hidden'); el.innerHTML=''; } });
-  if (!host.classList.contains('hidden')){ host.classList.add('hidden'); host.innerHTML=''; return; }
-  const f = state.foods.find(x=>x.id===id);
-  if (!f) return;
-  const gm = (f.groupLocked ? (f.group||'auto') : 'auto');
-  host.classList.remove('hidden');
-  host.innerHTML = `
-    <div class="row three">
-      <input data-if="name" value="${f.name}" placeholder="Nome"/>
-      <input data-if="kcal" type="number" step="0.1" value="${f.kcal}" placeholder="Energia (kcal/100g)"/>
-      <select data-if="group">
-        <option value="auto" ${gm==='auto'?'selected':''}>Gruppo: Automatico (dominante)</option>
-        <option value="c" ${gm==='c'?'selected':''}>Gruppo: Carboidrati (C)</option>
-        <option value="p" ${gm==='p'?'selected':''}>Gruppo: Proteine (P)</option>
-        <option value="f" ${gm==='f'?'selected':''}>Gruppo: Grassi (G)</option>
-      </select>
-    </div>
-    <div class="row three" style="margin-top:8px">
-      <input data-if="c" type="number" step="0.1" value="${f.c}" placeholder="Carbo (g/100g)"/>
-      <input data-if="p" type="number" step="0.1" value="${f.p}" placeholder="Proteine (g/100g)"/>
-      <input data-if="fat" type="number" step="0.1" value="${f.fat}" placeholder="Grassi (g/100g)"/>
-    </div>
-    <div class="actions" style="margin-top:10px">
-      <button class="secondary" data-if-btn="cancel">Annulla</button>
-      <button class="btn" data-if-btn="save">Salva</button>
-    </div>
-  `;
-
-  host.querySelector('[data-if-btn="cancel"]')?.addEventListener('click', ()=>{ host.classList.add('hidden'); host.innerHTML=''; });
-  host.querySelector('[data-if-btn="save"]')?.addEventListener('click', ()=>{
-    const f2 = state.foods.find(x=>x.id===id); if (!f2) return;
-    const name = host.querySelector('[data-if="name"]').value.trim();
-    if (!name){ alert('Inserisci il nome.'); return; }
-    const kcal = parse(host.querySelector('[data-if="kcal"]').value);
-    const c = parse(host.querySelector('[data-if="c"]').value);
-    const p = parse(host.querySelector('[data-if="p"]').value);
-    const fat = parse(host.querySelector('[data-if="fat"]').value);
-    const mode = host.querySelector('[data-if="group"]').value || 'auto';
-    const groupLocked = (mode !== 'auto');
-    const group = groupLocked ? mode : dominant(c,p,fat);
-    Object.assign(f2, { name, kcal, c, p, fat, group, groupLocked });
-    save();
-    // chiudi editor e aggiorna lista
-    host.classList.add('hidden');
-    host.innerHTML='';
-    renderFoods();
-  });
-}
-
 function editFood(id){
   const f = state.foods.find(x=>x.id===id); if (!f) return;
   els.fName.value = f.name; els.fKcal.value=f.kcal; els.fCarb.value=f.c; els.fProt.value=f.p; els.fFat.value=f.fat;
@@ -1558,9 +1391,7 @@ function importFoodsArray(arr){
       kcal: parse(nf.kcal), c: parse(nf.c), p: parse(nf.p), fat: parse(nf.fat)
       // eventuale nf.sug ignorato
     };
-    const importedGroup = (nf.group && ['c','p','f'].includes(nf.group)) ? nf.group : null;
- entry.groupLocked = !!nf.groupLocked;
- entry.group = (entry.groupLocked && importedGroup) ? importedGroup : dominant(entry.c,entry.p,entry.fat);
+    entry.group = dominant(entry.c,entry.p,entry.fat);
     if (exist) Object.assign(exist, entry); else state.foods.push(entry);
   });
   save(); renderFoods(); renderPlanner(); renderPreview();
@@ -1604,8 +1435,7 @@ function autoFillOne(mealIdx,k){
 /* ========= Eventi Planner ========= */
 els.mealsContainer.addEventListener('change', e=>{
   const t=e.target;
-  if (t.dataset.role==='macroVarSelect') { switchMacroVar(parseInt(t.dataset.meal), t.dataset.k, t.value); return; }
- if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
+  if (t.dataset.role==='addFood'){ addItem(parseInt(t.dataset.meal), t.dataset.k, t.value); t.value=''; }
   else if (t.dataset.role==='itemPct') {
  const mealIdx = parseInt(t.dataset.meal);
  const p = currentProfile(), m=p.meals[mealIdx];
@@ -1674,10 +1504,7 @@ els.mealsContainer.addEventListener('input', e=>{
 els.mealsContainer.addEventListener('click', e=>{
   const b = e.target.closest('button[data-role]'); if(!b) return;
   const role=b.dataset.role, mealIdx=parseInt(b.dataset.meal), k=b.dataset.k, food=b.dataset.food;
-  if (role==='macroVarNew') newMacroVar(mealIdx,k);
- else if (role==='macroVarRen') renameMacroVar(mealIdx,k);
- else if (role==='macroVarDel') deleteMacroVar(mealIdx,k);
- else if (role==='autoFill') autoFillOne(mealIdx,k);
+  if (role==='autoFill') autoFillOne(mealIdx,k);
   else if (role==='delItem') removeItem(mealIdx,k,food);
   else if (role==='auto1'){
     const p = currentProfile(), m=p.meals[mealIdx];
@@ -1870,8 +1697,6 @@ function setProfileHandlers(){
           state.ui = data.ui;
           if (!state.ui.foodsCollapsed) state.ui.foodsCollapsed={c:false,p:false,f:false};
           if (typeof state.ui.snapManual5 !== 'boolean') state.ui.snapManual5=false;
- if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods=false;
- if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants=false;
           if (!state.ui.preview) state.ui.preview={showC:true,showP:true,showF:true,showTargets:true};
         }
         save(); initProfileUI(); renderFoods(); renderPreview();
@@ -2048,8 +1873,6 @@ function initProfileUI(){
   // Sync UI toggles
   if (els.toggleHints) els.toggleHints.checked = !!state.ui.showHints;
   if (els.snapManual5) els.snapManual5.checked = !!state.ui.snapManual5;
- if (els.toggleAllFoods) els.toggleAllFoods.checked = !!state.ui.showAllFoods;
- if (els.toggleMacroVariants) els.toggleMacroVariants.checked = !!state.ui.enableMacroVariants;
   if (els.showColC) els.showColC.checked = !!state.ui.preview.showC;
   if (els.showColP) els.showColP.checked = !!state.ui.preview.showP;
   if (els.showColF) els.showColF.checked = !!state.ui.preview.showF;
@@ -2076,6 +1899,409 @@ function initProfileUI(){
 initProfileUI();
 updateFoodPreview();
 BOOTING = false;
+
+
+
+// =========================
+// PATCH FUNZIONALE (2026-01-29)
+// - Vista "Tutti" (toggleAllFoods) in Planner
+// - Varianti per macro (toggleMacroVariants) in Planner
+// - Gruppo alimento manuale (fGroupMode + groupLocked)
+// - Modifica alimento inline nell'elenco + autoclose
+// =========================
+
+function ensurePatchedDefaults(){
+  state.ui = state.ui || {};
+  if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
+  if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
+  if (Array.isArray(state.foods)) state.foods.forEach(f=>{ if (typeof f.groupLocked !== 'boolean') f.groupLocked = false; });
+}
+
+function ensurePatchedUI(){
+  // --- Settings: aggiungi checkbox se mancanti ---
+  const settings = document.getElementById('page-settings');
+  if (settings){
+    const h3s = Array.from(settings.querySelectorAll('h3'));
+    const hInter = h3s.find(h=>h.textContent.trim().toLowerCase()==='interfaccia');
+    if (hInter){
+      const sec = hInter.closest('.sec');
+      const row = sec?.querySelector('.row.two') || sec?.querySelector('.row');
+      if (row){
+        if (!document.getElementById('toggleAllFoods')){
+          const lab = document.createElement('label');
+          lab.className='inline';
+          lab.innerHTML = '<input type="checkbox" id="toggleAllFoods"/> <span>Mostra <b>tutti</b> gli alimenti nei menu di aggiunta (Planner)</span>';
+          row.appendChild(lab);
+        }
+        if (!document.getElementById('toggleMacroVariants')){
+          const lab = document.createElement('label');
+          lab.className='inline';
+          lab.innerHTML = '<input type="checkbox" id="toggleMacroVariants"/> <span>Abilita varianti per macronutrienti nel Planner (es. Pasta/Riso)</span>';
+          row.appendChild(lab);
+        }
+      }
+    }
+  }
+
+  // --- Foods form: aggiungi select gruppo manuale ---
+  const fFat = document.getElementById('fFat');
+  if (fFat && !document.getElementById('fGroupMode')){
+    const sel = document.createElement('select');
+    sel.id = 'fGroupMode';
+    sel.title = 'Scegli come classificare questo alimento';
+    sel.innerHTML = `
+      <option value="auto" selected>Gruppo: Automatico (dominante)</option>
+      <option value="c">Gruppo: Carboidrati (C)</option>
+      <option value="p">Gruppo: Proteine (P)</option>
+      <option value="f">Gruppo: Grassi (G)</option>
+    `;
+    // inserisci dopo fFat
+    fFat.insertAdjacentElement('afterend', sel);
+  }
+}
+
+// ---------- Gruppo manuale nel form "Nuovo alimento" ----------
+function patchedUpdateFoodPreview(){
+  const c = parse(document.getElementById('fCarb')?.value);
+  const p = parse(document.getElementById('fProt')?.value);
+  const f = parse(document.getElementById('fFat')?.value);
+  let dom = dominant(c,p,f);
+  const gm = (document.getElementById('fGroupMode')?.value || 'auto');
+  if (gm !== 'auto') dom = gm;
+
+  const foodDominant = document.getElementById('foodDominant');
+  const foodMacroLine = document.getElementById('foodMacroLine');
+  const foodKcalEst = document.getElementById('foodKcalEst');
+  const fKcal = parse(document.getElementById('fKcal')?.value);
+
+  if (foodDominant){
+    foodDominant.className = 'tag ' + (dom||'');
+    foodDominant.textContent = dom==='c' ? 'CARBOIDRATI' : dom==='p' ? 'PROTEINE' : dom==='f' ? 'GRASSI' : '-';
+  }
+  if (foodMacroLine) foodMacroLine.textContent = `C ${c} g - P ${p} g - G ${f} g`;
+  if (foodKcalEst){
+    const kcalEst = c*4 + p*4 + f*9;
+    foodKcalEst.textContent = (fKcal>0) ? '' : `(stima: ${Math.round(kcalEst)} kcal/100g)`;
+  }
+}
+
+function patchedAddFoodFromForm(){
+  const nameEl = document.getElementById('fName');
+  const name = (nameEl?.value||'').trim();
+  if (!name){ nameEl?.focus(); return; }
+  const kcal = parse(document.getElementById('fKcal')?.value);
+  const c = parse(document.getElementById('fCarb')?.value);
+  const p = parse(document.getElementById('fProt')?.value);
+  const fat = parse(document.getElementById('fFat')?.value);
+
+  const mode = (document.getElementById('fGroupMode')?.value || 'auto');
+  const groupLocked = (mode !== 'auto');
+  const group = groupLocked ? mode : dominant(c,p,fat);
+
+  const btn = document.getElementById('addFoodBtn');
+  const id = btn?.dataset.editingId || crypto.randomUUID();
+  const exists = state.foods.find(x=>x.id===id);
+  const entry = {id,name,kcal,c,p,fat,group,groupLocked};
+  if (exists) Object.assign(exists, entry); else state.foods.push(entry);
+
+  // reset form
+  ['fName','fKcal','fCarb','fProt','fFat'].forEach(i=>{ const el=document.getElementById(i); if(el) el.value=''; });
+  const gm = document.getElementById('fGroupMode'); if (gm) gm.value='auto';
+  if (btn){ btn.textContent='Aggiungi/Salva'; delete btn.dataset.editingId; }
+
+  save();
+  renderFoods();
+  patchedUpdateFoodPreview();
+}
+
+// ---------- Inline editor nella lista alimenti ----------
+function closeAllInlineEditors(){
+  document.querySelectorAll('.food-inline-editor').forEach(el=>el.remove());
+}
+
+function toggleInlineFoodEditor(id, anchorEl){
+  if (!anchorEl) return;
+  // chiudi se già aperto subito dopo
+  const next = anchorEl.nextElementSibling;
+  if (next && next.classList.contains('food-inline-editor')){ next.remove(); return; }
+  closeAllInlineEditors();
+
+  const f = state.foods.find(x=>x.id===id);
+  if (!f) return;
+
+  const editor = document.createElement('div');
+  editor.className='food-inline-editor';
+  const gm = (f.groupLocked ? (f.group||'auto') : 'auto');
+  editor.innerHTML = `
+    <div class="row three">
+      <input data-if="name" value="${f.name}" placeholder="Nome"/>
+      <input data-if="kcal" type="number" step="0.1" value="${f.kcal}" placeholder="Energia (kcal/100g)"/>
+      <select data-if="group">
+        <option value="auto" ${gm==='auto'?'selected':''}>Gruppo: Automatico (dominante)</option>
+        <option value="c" ${gm==='c'?'selected':''}>Gruppo: Carboidrati (C)</option>
+        <option value="p" ${gm==='p'?'selected':''}>Gruppo: Proteine (P)</option>
+        <option value="f" ${gm==='f'?'selected':''}>Gruppo: Grassi (G)</option>
+      </select>
+    </div>
+    <div class="row three" style="margin-top:8px">
+      <input data-if="c" type="number" step="0.1" value="${f.c}" placeholder="Carbo (g/100g)"/>
+      <input data-if="p" type="number" step="0.1" value="${f.p}" placeholder="Proteine (g/100g)"/>
+      <input data-if="fat" type="number" step="0.1" value="${f.fat}" placeholder="Grassi (g/100g)"/>
+    </div>
+    <div class="actions" style="margin-top:10px">
+      <button class="secondary" data-if-btn="cancel">Annulla</button>
+      <button class="btn" data-if-btn="save">Salva</button>
+    </div>
+  `;
+
+  anchorEl.insertAdjacentElement('afterend', editor);
+
+  editor.querySelector('[data-if-btn="cancel"]').addEventListener('click', ()=> editor.remove());
+  editor.querySelector('[data-if-btn="save"]').addEventListener('click', ()=>{
+    const name = editor.querySelector('[data-if="name"]').value.trim();
+    if (!name){ alert('Inserisci il nome.'); return; }
+    const kcal = parse(editor.querySelector('[data-if="kcal"]').value);
+    const c = parse(editor.querySelector('[data-if="c"]').value);
+    const p = parse(editor.querySelector('[data-if="p"]').value);
+    const fat = parse(editor.querySelector('[data-if="fat"]').value);
+    const mode = editor.querySelector('[data-if="group"]').value || 'auto';
+    const groupLocked = (mode !== 'auto');
+    const group = groupLocked ? mode : dominant(c,p,fat);
+
+    Object.assign(f, {name,kcal,c,p,fat,group,groupLocked});
+    save();
+    // autoclose: editor sparisce perché renderFoods ricrea la lista
+    renderFoods();
+  });
+}
+
+// Intercetta click su Modifica nella lista (in CAPTURE per bloccare handler vecchio)
+els.foodsGroups?.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-act="edit"]');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const id = btn.dataset.id;
+  const item = btn.closest('.item');
+  toggleInlineFoodEditor(id, item);
+}, true);
+
+// Intercetta click su Aggiungi/Salva alimento (in CAPTURE)
+const addBtn = document.getElementById('addFoodBtn');
+addBtn?.addEventListener('click', (e)=>{
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  patchedAddFoodFromForm();
+}, true);
+
+// Aggancia update preview anche a fGroupMode
+['fCarb','fProt','fFat','fKcal','fGroupMode'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('input', patchedUpdateFoodPreview);
+});
+
+// ---------- Varianti macro nel Planner ----------
+function ensureMacroVariants(m){
+  if (!m.macroVariants) m.macroVariants = {c:null,p:null,f:null};
+  ['c','p','f'].forEach(k=>{
+    let mv = m.macroVariants[k];
+    if (!mv || !Array.isArray(mv.variants) || mv.variants.length===0){
+      const id = crypto.randomUUID();
+      mv = { activeId: id, variants: [{ id, name: 'Base', items: (m.items?.[k]||[]).map(i=>({...i})) }] };
+      m.macroVariants[k] = mv;
+    }
+    if (!mv.activeId) mv.activeId = mv.variants[0].id;
+    if (!mv.variants.some(v=>v.id===mv.activeId)) mv.activeId = mv.variants[0].id;
+  });
+}
+
+function syncActiveMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  const v = mv.variants.find(x=>x.id===mv.activeId);
+  if (!v) return;
+  v.items = (m.items?.[k]||[]).map(i=>({...i}));
+}
+
+function buildMacroVarUI(m, mealIdx, k){
+  if (!state.ui?.enableMacroVariants) return '';
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  const opts = mv.variants.map(v=>`<option value="${v.id}" ${(mv.activeId===v.id)?'selected':''}>${v.name}</option>`).join('');
+  return `
+    <span class="muted">Variante</span>
+    <select data-role="macroVarSelect" data-meal="${mealIdx}" data-k="${k}" style="width:auto; min-width:120px">${opts}</select>
+    <button class="secondary" data-role="macroVarNew" data-meal="${mealIdx}" data-k="${k}" title="Nuova variante">+</button>
+    <button class="secondary" data-role="macroVarRen" data-meal="${mealIdx}" data-k="${k}" title="Rinomina variante">R</button>
+    <button class="secondary danger" data-role="macroVarDel" data-meal="${mealIdx}" data-k="${k}" title="Elimina variante">×</button>
+  `;
+}
+
+function switchMacroVar(mealIdx,k,varId){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  syncActiveMacroVar(mealIdx,k);
+  const mv=m.macroVariants[k];
+  if (!mv.variants.some(v=>v.id===varId)) return;
+  mv.activeId = varId;
+  const v = mv.variants.find(x=>x.id===varId);
+  m.items[k] = (v.items||[]).map(i=>({...i}));
+  // mantiene coerenza con variante pasto attiva
+  _syncActiveVariant(mealIdx);
+  save();
+  renderPlanner();
+}
+
+function newMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  syncActiveMacroVar(mealIdx,k);
+  const label = (k==='c'?'Carbo':'p'?'Proteine':'Grassi');
+  const name = prompt('Nome variante per ' + label + ':', 'Variante ' + (m.macroVariants[k].variants.length+1));
+  if (!name) return;
+  const id = crypto.randomUUID();
+  m.macroVariants[k].variants.push({id, name, items:(m.items[k]||[]).map(i=>({...i}))});
+  m.macroVariants[k].activeId = id;
+  save();
+  renderPlanner();
+}
+
+function renameMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  const v = mv.variants.find(x=>x.id===mv.activeId) || mv.variants[0];
+  const name = prompt('Nuovo nome variante:', v.name);
+  if (!name) return;
+  v.name = name;
+  save();
+  renderPlanner();
+}
+
+function deleteMacroVar(mealIdx,k){
+  const p=currentProfile(), m=p.meals[mealIdx];
+  ensureMacroVariants(m);
+  const mv=m.macroVariants[k];
+  if (mv.variants.length<=1){ alert('Deve esistere almeno una variante.'); return; }
+  if (!confirm('Eliminare la variante attiva?')) return;
+  const idx = mv.variants.findIndex(v=>v.id===mv.activeId);
+  mv.variants.splice(idx,1);
+  mv.activeId = mv.variants[0].id;
+  m.items[k] = (mv.variants[0].items||[]).map(i=>({...i}));
+  _syncActiveVariant(mealIdx);
+  save();
+  renderPlanner();
+}
+
+// Patch syncActiveVariant per tenere aggiornate le macro-varianti
+const _syncActiveVariant = syncActiveVariant;
+syncActiveVariant = function(mealIdx){
+  _syncActiveVariant(mealIdx);
+  if (state.ui?.enableMacroVariants){
+    ['c','p','f'].forEach(k=>syncActiveMacroVar(mealIdx,k));
+  }
+};
+
+// Override macroBox per includere: vista tutti + UI varianti macro
+const _macroBoxOrig = macroBox;
+macroBox = function(k,label,idx,m){
+  // varianti macro UI
+  const mvUI = buildMacroVarUI(m, idx, k);
+
+  const listFoods = (state.ui?.showAllFoods) ? state.foods.slice() : state.foods.filter(x=>x.group===k);
+  const opts = listFoods
+    .sort((a,b)=>a.name.localeCompare(b.name))
+    .map(f=>{
+      const badge = state.ui?.showAllFoods ? ` (${(f.group||'').toUpperCase()})` : '';
+      return `<option value="${f.id}">${f.name}${badge}</option>`;
+    }).join('');
+
+  const items = m.items[k].map(it=>{
+    const f = state.foods.find(x=>x.id===it.foodId);
+    if (!f) return '';
+    const tag = k==='c'?'c':k==='p'?'p':'f';
+    const approx = it.approxDir ? `<span class="approx-badge ${it.approxDir==='up'?'approx-up':'approx-down'}">≈5 ${it.approxDir==='up'?'↑':'↓'}</span>` : '';
+    const auto = it.auto ? `<span class="auto-badge">auto</span>` : '';
+    return `
+      <div class="item" style="grid-template-columns:1fr auto">
+        <div>
+          <div style="font-weight:600">${f.name} <span class="tag ${tag}">${label[0]}</span></div>
+          <div class="meta">
+            Grammi: <input type="number" step="1" min="0" value="${it.g}" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" data-role="grams" style="width:90px"/> g
+            ${auto} ${approx}
+          </div>
+        </div>
+        <div class="inline">
+          <span class="muted">%</span>
+          <input type="number" min="0" max="100" step="5" style="width:64px" value="${it.autoPct ?? 100}" data-role="itemPct" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}" title="Percentuale del target macro che questo alimento deve coprire"/>
+          <button class="secondary" data-role="auto1" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Auto (copri ${label.toLowerCase()})</button>
+          <button class="secondary danger" data-role="delItem" data-meal="${idx}" data-k="${k}" data-food="${it.foodId}">Rimuovi</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="macro">
+      <h5>${label}</h5>
+      <div class="inline">
+        ${mvUI}
+        <select data-role="addFood" data-meal="${idx}" data-k="${k}">
+          <option value="">+ Aggiungi alimento...</option>${opts}
+        </select>
+        <button class="secondary" data-role="autoFill" data-meal="${idx}" data-k="${k}">Auto (1 alimento)</button>
+      </div>
+      <div style="margin-top:6px">${items || '<div class="muted">Nessun alimento</div>'}</div>
+    </div>
+  `;
+};
+
+// Eventi per macro varianti (capture su container)
+els.mealsContainer?.addEventListener('change', (e)=>{
+  const t=e.target;
+  if (t?.dataset?.role==='macroVarSelect'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    switchMacroVar(parseInt(t.dataset.meal), t.dataset.k, t.value);
+  }
+}, true);
+
+els.mealsContainer?.addEventListener('click', (e)=>{
+  const b = e.target.closest('button[data-role]');
+  if (!b) return;
+  const role=b.dataset.role;
+  if (!role) return;
+  if (role==='macroVarNew' || role==='macroVarRen' || role==='macroVarDel'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const mealIdx=parseInt(b.dataset.meal), k=b.dataset.k;
+    if (role==='macroVarNew') newMacroVar(mealIdx,k);
+    else if (role==='macroVarRen') renameMacroVar(mealIdx,k);
+    else if (role==='macroVarDel') deleteMacroVar(mealIdx,k);
+  }
+}, true);
+
+// ---------- Attiva toggle UI ----------
+function bindPatchedToggles(){
+  const tAll = document.getElementById('toggleAllFoods');
+  const tVar = document.getElementById('toggleMacroVariants');
+  if (tAll){
+    tAll.checked = !!state.ui.showAllFoods;
+    tAll.addEventListener('change', ()=>{ state.ui.showAllFoods = !!tAll.checked; save(); renderPlanner(); });
+  }
+  if (tVar){
+    tVar.checked = !!state.ui.enableMacroVariants;
+    tVar.addEventListener('change', ()=>{ state.ui.enableMacroVariants = !!tVar.checked; save(); renderPlanner(); });
+  }
+}
+
+// Run patch init
+ensurePatchedDefaults();
+ensurePatchedUI();
+bindPatchedToggles();
+patchedUpdateFoodPreview();
+renderPlanner();
+
 
 </script>
 </body>
