@@ -1817,6 +1817,7 @@ function exportPDF(){
       .v4{background:#fff4e5;color:#b45309;border-color:#bcd}
       .v5{background:#e6fffb;color:#0f766e;border-color:#bcd}
       .varbox{border:1px dashed #ccc;border-radius:10px;padding:8px;margin:6px 0}
+@media print{.meal,.varbox{break-inside:avoid;page-break-inside:avoid;}}
     
 #page-settings #email, #page-settings #password, #page-settings #loginBtn, #page-settings #registerBtn, #page-settings #logoutBtn, #page-settings #resetPwdBtn, #page-settings #forceSyncBtn{display:none !important}
 </style>`;
@@ -1849,7 +1850,15 @@ function exportPDF(){
 
   const win = window.open('', '_blank');
   win.document.write(`<html><head><title>PDF Dieta</title>${style}</head><body>${html}</body></html>`);
-  win.document.close(); win.focus(); win.print();
+  win.document.close();
+  const doPrint = () => { try { win.focus(); win.print(); } catch(e) { console.error(e); } };
+  // Attendi rendering completo (layout + font) prima della stampa
+  if (win.document.fonts && win.document.fonts.ready) {
+    win.document.fonts.ready.then(() => setTimeout(doPrint, 150));
+  } else {
+    // fallback: un piccolo delay evita export parziali su documenti lunghi
+    setTimeout(doPrint, 300);
+  }
 }
 
 /* ========= Init helpers ========= */
