@@ -419,12 +419,12 @@ label.inline input[type="checkbox"]{width:auto;min-width:auto;padding:0;margin:0
       <div class="inline" style="justify-content:space-between">
         <div class="inline">
           <span class="muted">Legenda tipi pasto:</span>
-          <span class="var-badge var0">Tipo 1</span>
-          <span class="var-badge var1">Tipo 2</span>
-          <span class="var-badge var2">Tipo 3</span>
-          <span class="var-badge var3">Tipo 4</span>
-          <span class="var-badge var4">Tipo 5</span>
-          <span class="var-badge var5">Tipo 6</span>
+          <span class="var-badge var0">Variante 1</span>
+          <span class="var-badge var1">Variante 2</span>
+          <span class="var-badge var2">Variante 3</span>
+          <span class="var-badge var3">Variante 4</span>
+          <span class="var-badge var4">Variante 5</span>
+          <span class="var-badge var5">Variante 6</span>
         </div>
         <button class="btn" id="previewExportBtn">Esporta PDF</button>
       </div>
@@ -958,7 +958,7 @@ function ensureMeals(p, nOverride){
   p.meals.forEach(m=>{
     if (!m.variants || !m.variants.length){
       const vid = crypto.randomUUID();
-      m.variants = [{id:vid, name:'Tipo 1', items:cloneItems(m.items)}];
+      m.variants = [{id:vid, name:'Variante 1', items:cloneItems(m.items)}];
       m.activeVarId = vid;
     } else if (!m.activeVarId){
       m.activeVarId = m.variants[0].id;
@@ -985,7 +985,7 @@ function newVariantFromCurrent(mealIdx){
   const p = currentProfile(), m = p.meals[mealIdx];
   const nextNum = m.variants.length + 1;
   const vid = crypto.randomUUID();
-  m.variants.push({id:vid, name:`Tipo ${nextNum}`, items:cloneItems(m.items)});
+  m.variants.push({id:vid, name:`Variante ${nextNum}`, items:cloneItems(m.items)});
   m.activeVarId = vid;
   save(); renderPlanner(); renderPreview();
 }
@@ -1790,85 +1790,39 @@ setProfileHandlers();
 
 /* ========= Anteprima: Esporta PDF (tutte le varianti, senza frase) ========= */
 els.previewExportBtn.addEventListener('click', exportPDF);
-function exportPDF(){
+function exportPDF() {
+  // Export coerente con Anteprima (incluso varianti macro)
+  try { renderPreview(); } catch (e) { console.error(e); }
+
   const p = currentProfile();
-  const opts = state.ui?.preview || { showC:true, showP:true, showF:true, showTargets:true };
-  const cols = [];
-  if (opts.showC) cols.push({title:'Carboidrati', k:'c', tag:'c'});
-  if (opts.showP) cols.push({title:'Proteine',    k:'p', tag:'p'});
-  if (opts.showF) cols.push({title:'Grassi',      k:'f', tag:'f'});
-  const colCount = Math.max(1, cols.length);
+  const previewHTML = document.querySelector('#previewContainer')?.innerHTML || '';
 
   const style = `
   <style>
-    /* Impaginazione stampa ottimizzata */
-    @page{ margin: 12mm; }
-    html,body{ height:auto; }
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto;margin:0; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
-
-    /* Titolo: evita pagina con solo titolo */
-    h2.print-title{margin:0 0 6mm; break-after:avoid-page; page-break-after:avoid;}
-    h2.print-title + .meal{ break-before:avoid-page; page-break-before:avoid; }
-
-    /* Compatta gli spazi per far stare 1+ pasti per pagina */
-    .meal{border:1px solid #ddd;border-radius:10px;padding:8mm 8mm;margin:0 0 6mm; break-inside:avoid; page-break-inside:avoid;}
-    .meal h4{margin:0 0 4mm;}
-
-    .muted{color:#555;font-size:11px;}
-    .badge{display:inline-block;border:1px solid #ddd;border-radius:999px;padding:1.5mm 3mm;font-size:11px;margin-left:2mm;}
-    .tag{border:1px solid #999;border-radius:999px;padding:1mm 2.5mm;font-size:10px;}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto;margin:24px}
+    h2{margin:0 0 10px} h3{margin:14px 0 6px}
+    .meal{border:1px solid #ddd;border-radius:12px;padding:12px;margin:10px 0}
+    .muted{color:#555;font-size:12px}
+    .badge{display:inline-block;border:1px solid #ddd;border-radius:999px;padding:2px 8px;font-size:12px;margin-left:6px}
+    .tag{border:1px solid #999;border-radius:999px;padding:2px 6px;font-size:11px}
     .c{background:#e0f2fe}.p{background:#dcfce7}.f{background:#fef9c3}
-
-    /* Varianti: non spezzare */
-    .var-box,.varbox{border:1px dashed #ccc;border-radius:9px;padding:4mm;margin:3mm 0; break-inside:avoid; page-break-inside:avoid;}
-    .var-badge,.vb{display:inline-block;padding:1mm 2.5mm;border-radius:999px;font-size:10px;border:1px solid #ccc;margin:0 0 2mm 0}
-
-    /* Liste: niente box enormi, stile più "stampa" */
-    .list{border:0 !important; padding:0 !important; background:transparent !important;}
-    .item{border:0 !important; padding:1.5mm 0 !important; margin:0 !important; background:transparent !important;}
-
-    /* Se qualche pasto è più alto di una pagina, consenti la divisione interna come fallback */
-    @media print{
-      .meal.too-tall{ break-inside:auto; page-break-inside:auto; }
-    }
-
+    .var-box,.varbox{border:1px dashed #ccc;border-radius:10px;padding:8px;margin:6px 0}
+    .var-badge,.vb{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #ccc;margin:2px 0}
+    .list{border:0 !important; padding:0 !important;}
+    .item{border:0 !important; padding:4px 0 !important;}
+    @media print{ .meal,.var-box,.varbox{break-inside:avoid;page-break-inside:avoid;} }
   </style>`;
-  let html = `<h2>Piano pasti - ${p.name}</h2>`;
 
-  p.meals.forEach((m,mi)=>{
-    html += `<div class="meal">
-      <h3>${mi+1}. ${m.name}</h3>
-      ${opts.showTargets ? `<div class="muted">Target pasto: C ${fmt(m.macros.c)} g - P ${fmt(m.macros.p)} g - G ${fmt(m.macros.f)} g</div>` : ``}
-    `;
-    m.variants.forEach((v,vi)=>{
-      html += `<div class="varbox">
-        <div class="vb v${vi%6}">${v.name}</div>
-        <div class="cols">
-          ${cols.map(c => pdfCol(c.title, c.k, c.tag, v)).join('')}
-        </div>
-      </div>`;
-    });
-    html += `</div>`;
-  });
-
-  function pdfCol(title,k,tag,v){
-    const rows = v.items[k].map(it=>{
-      const f = state.foods.find(x=>x.id===it.foodId);
-      if (!f) return '';
-      return `<tr><td>${f.name}</td><td style="text-align:right">${it.g||0} g</td></tr>`;
-    }).join('') || '<tr><td class="muted" colspan="2">—</td></tr>';
-    return `<div><div class="tag ${tag}">${title}</div><table>${rows}</table></div>`;
-  }
+  const html = `<h2>Piano pasti - ${p.name}</h2>${previewHTML}`;
 
   const win = window.open('', '_blank');
   win.document.write(`<html><head><title>PDF Dieta</title>${style}</head><body>${html}</body></html>`);
   win.document.close();
+
   const doPrint = () => { try { win.focus(); win.print(); } catch(e) { console.error(e); } };
-  // Attendi rendering completo (layout + font) prima della stampa
   if (win.document.fonts && win.document.fonts.ready) {
     win.document.fonts.ready.then(() => setTimeout(doPrint, 150));
   } else {
-    // fallback: un piccolo delay evita export parziali su documenti lunghi
     setTimeout(doPrint, 300);
   }
 }
@@ -1942,7 +1896,7 @@ BOOTING = false;
 function ensurePatchedDefaults(){
   state.ui = state.ui || {};
   if (typeof state.ui.showAllFoods !== 'boolean') state.ui.showAllFoods = false;
-  if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = false;
+  if (typeof state.ui.enableMacroVariants !== 'boolean') state.ui.enableMacroVariants = true;
   if (Array.isArray(state.foods)) state.foods.forEach(f=>{ if (typeof f.groupLocked !== 'boolean') f.groupLocked = false; });
 }
 
@@ -2138,7 +2092,7 @@ function ensureMacroVariantsForMealVar(m, mealVarId){
     if (!mv || !Array.isArray(mv.variants) || mv.variants.length===0){
       const id = crypto.randomUUID();
       const baseItems = (m.variants?.find(v=>v.id===mealVarId)?.items?.[k] || m.items?.[k] || []).map(i=>({...i}));
-      mv = { activeId: id, variants: [{ id, name: 'Base', items: baseItems }] };
+      mv = { activeId: id, variants: [{ id, name: 'Variante 1', items: baseItems }] };
       ms[k] = mv;
     }
     if (!mv.activeId) mv.activeId = mv.variants[0].id;
